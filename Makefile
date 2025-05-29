@@ -12,6 +12,7 @@ help: ## Show this help message
 	@echo "Parameters:"
 	@echo "  PROJECT_NAME  - Name of the Laravel project (default: laravel-app)"
 	@echo "                  Virtual host will be: <PROJECT_NAME>.loc"
+	@echo "                  Files will be accessible at: /var/www/<PROJECT_NAME>"
 	@echo ""
 	@echo "Examples:"
 	@echo "  make init PROJECT_NAME=my-app     # Creates virtual host: my-app.loc"
@@ -20,8 +21,9 @@ help: ## Show this help message
 	@echo "  make clean PROJECT_NAME=my-app"
 	@echo "  make add-host PROJECT_NAME=my-app"
 	@echo ""
-	@echo "Note: After initialization, add the following to your /etc/hosts file:"
-	@echo "      127.0.0.1 <PROJECT_NAME>.loc"
+	@echo "Note: After initialization:"
+	@echo "  1. Laravel files will be in /var/www/<PROJECT_NAME> for editing"
+	@echo "  2. Add this to your /etc/hosts file: 127.0.0.1 <PROJECT_NAME>.loc"
 	@echo ""
 	@echo "Available targets:"
 	@awk 'BEGIN {FS = ":.*?## "} /^[a-zA-Z_-]+:.*?## / {printf "  %-15s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -37,6 +39,7 @@ init: ## Initialize a new Laravel project with Docker containers and virtual hos
 	echo "🚀 Initializing Laravel project: $$PROJECT_NAME"; \
 	echo "🌐 Virtual Host: $$PROJECT_NAME.loc"; \
 	echo "📁 Location: /var/www/$$PROJECT_NAME"; \
+	echo "📝 Files will be accessible for editing"; \
 	echo ""; \
 	./init-laravel-container.sh $$PROJECT_NAME /var/www $${PROJECT_NAME}_volume; \
 	echo ""; \
@@ -44,6 +47,8 @@ init: ## Initialize a new Laravel project with Docker containers and virtual hos
 	echo "   127.0.0.1 $$PROJECT_NAME.loc"; \
 	echo ""; \
 	echo "Then visit: http://$$PROJECT_NAME.loc"; \
+	echo ""; \
+	echo "📝 Edit Laravel files in: /var/www/$$PROJECT_NAME"; \
 	echo ""; \
 	echo "💡 Quick hosts file management:"; \
 	echo "   ./manage-hosts.sh add $$PROJECT_NAME    # Add hosts entry"; \

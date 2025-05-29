@@ -37,6 +37,41 @@ echo "🌐 Virtual Host: $VIRTUAL_HOST"
 # Create project directory if not exists
 mkdir -p "$PROJECT_PATH"
 
+# Check if Laravel is already installed in the project directory
+if [ -f "$PROJECT_PATH/artisan" ]; then
+    echo "✅ Laravel already exists in $PROJECT_PATH"
+else
+    echo "📦 Installing Laravel in project directory..."
+    
+    # Install Laravel directly in the project directory using Composer
+    if command -v composer >/dev/null 2>&1; then
+        echo "🎵 Using local Composer to install Laravel..."
+        cd "$PROJECT_PATH"
+        composer create-project laravel/laravel . --no-interaction
+        cd - > /dev/null
+    else
+        echo "🐳 Using Docker Composer to install Laravel..."
+        docker run --rm -v "$PROJECT_PATH":/app -w /app composer:2 \
+            composer create-project laravel/laravel . --no-interaction
+    fi
+    
+    # Set proper permissions
+    if [ -f "$PROJECT_PATH/artisan" ]; then
+        echo "🔧 Setting proper permissions..."
+        chmod -R 775 "$PROJECT_PATH/storage" "$PROJECT_PATH/bootstrap/cache" 2>/dev/null || true
+        
+        # Create .env if it doesn't exist
+        if [ ! -f "$PROJECT_PATH/.env" ] && [ -f "$PROJECT_PATH/.env.example" ]; then
+            cp "$PROJECT_PATH/.env.example" "$PROJECT_PATH/.env"
+        fi
+        
+        echo "✅ Laravel installed successfully in $PROJECT_PATH"
+    else
+        echo "❌ Laravel installation failed"
+        exit 1
+    fi
+fi
+
 # Create Docker volume if it doesn't exist, or remove and recreate if it exists
 echo "🔄 Preparing Docker volume..."
 if docker volume inspect $VOLUME_NAME > /dev/null 2>&1; then
@@ -51,7 +86,7 @@ if ! docker network inspect $PROXY_NETWORK > /dev/null 2>&1; then
     docker network create $PROXY_NETWORK
 fi
 
-# Create Dockerfile with Laravel installation capability
+# Create Dockerfile with simpler setup since Laravel is already installed
 cat <<EOF > "$PROJECT_PATH/Dockerfile"
 FROM php:8.3-fpm
 
@@ -61,29 +96,20 @@ RUN apt-get update && apt-get install -y \
 
 COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
 
-# Create a script to install Laravel if not already present
+# Create a script to set up Laravel environment
 RUN echo '#!/bin/bash\n\
-if [ ! -f "/var/www/artisan" ]; then\n\
-    echo "Installing Laravel..."\n\
-    cd /tmp\n\
-    composer create-project laravel/laravel laravel-temp --no-interaction\n\
-    if [ $? -eq 0 ]; then\n\
-        echo "Moving Laravel files to /var/www..."\n\
-        cp -r laravel-temp/. /var/www/\n\
-        rm -rf laravel-temp\n\
-        cd /var/www\n\
-        chown -R www-data:www-data .\n\
-        chmod -R 775 storage bootstrap/cache\n\
-        cp .env.example .env\n\
-        php artisan key:generate\n\
-        echo "Laravel installation completed successfully."\n\
-    else\n\
-        echo "Laravel installation failed."\n\
-        exit 1\n\
-    fi\n\
-else\n\
-    echo "Laravel already installed."\n\
+if [ -f "/var/www/.env.example" ] && [ ! -f "/var/www/.env" ]; then\n\
+    echo "Setting up Laravel environment..."\n\
+    cd /var/www\n\
+    cp .env.example .env\n\
+    php artisan key:generate\n\
+    echo "Laravel environment setup completed."\n\
 fi\n\
+\n\
+# Set proper permissions\n\
+chown -R www-data:www-data /var/www\n\
+chmod -R 775 /var/www/storage /var/www/bootstrap/cache 2>/dev/null || true\n\
+\n\
 exec php-fpm' > /usr/local/bin/laravel-init.sh && chmod +x /usr/local/bin/laravel-init.sh
 
 WORKDIR $CONTAINER_DIR
@@ -126,7 +152,7 @@ services:
       dockerfile: Dockerfile
     container_name: ${PHP_CONTAINER}
     volumes:
-      - ${VOLUME_NAME}:${CONTAINER_DIR}
+      - ./:${CONTAINER_DIR}
     networks:
       - ${NETWORK_NAME}
       - ${PROXY_NETWORK}
@@ -140,7 +166,7 @@ services:
     image: nginx:stable-alpine
     container_name: ${NGINX_CONTAINER}
     volumes:
-      - ${VOLUME_NAME}:${CONTAINER_DIR}
+      - ./:${CONTAINER_DIR}
       - ./nginx.conf:/etc/nginx/conf.d/default.conf
     depends_on:
       app:
@@ -235,7 +261,8 @@ fi
 echo ""
 echo "🎉 Laravel project '$PROJECT_NAME' has been successfully initialized!"
 echo "🌐 Virtual Host: $VIRTUAL_HOST"
-echo "📁 Project files are stored in Docker volume: $VOLUME_NAME"
+echo "📁 Project files are accessible at: $PROJECT_PATH"
+echo "📝 You can now edit Laravel files directly in: $PROJECT_PATH"
 echo ""
 echo "🔧 To access your application:"
 echo "   1. Add this line to your /etc/hosts file:"
@@ -244,6 +271,8 @@ echo ""
 echo "   2. Then visit: http://$VIRTUAL_HOST"
 echo ""
 echo "💡 Useful commands:"
+echo "   - Edit files: Open $PROJECT_PATH in your IDE"
 echo "   - Access PHP container: docker exec -it ${PHP_CONTAINER} bash"
+echo "   - Run artisan: docker exec ${PHP_CONTAINER} php /var/www/artisan <command>"
 echo "   - View logs: docker logs ${PHP_CONTAINER}"
 echo "   - Stop project: docker-compose -p $PROJECT_NAME -f $PROJECT_PATH/docker-compose.yml down"
