@@ -211,7 +211,7 @@ Route::get('/', function () {
 - **PHP Container**: PHP 8.3-FPM with Composer, Laravel dependencies
 - **Nginx Container**: Project-specific Nginx with virtual host configuration
 - **Reverse Proxy**: Shared nginx-proxy container for routing
-- **Volume Management**: Docker volumes for persistent file storage
+- **Bind Mount Storage**: Project files directly accessible on host filesystem
 - **Network Isolation**: Projects connected via shared proxy network
 
 ### Laravel Installation Process
@@ -235,7 +235,7 @@ The included `manage-hosts.sh` script provides:
 
 ### Direct script usage
 ```bash
-./init-laravel-container.sh project_name /var/www volume_name
+./init-laravel-container.sh project_name /var/www
 ```
 
 ### Container access
@@ -336,9 +336,6 @@ If cleanup fails:
 ```bash
 # Force remove project containers
 docker rm -f PROJECT_NAME_php PROJECT_NAME_nginx
-
-# Force remove volumes  
-docker volume rm PROJECT_NAME_volume --force
 
 # Remove networks
 docker network rm PROJECT_NAME_net

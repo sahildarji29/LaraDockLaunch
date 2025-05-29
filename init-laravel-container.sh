@@ -6,7 +6,6 @@ set -e
 # Input parameters
 PROJECT_NAME=$1
 LOCAL_DIR=$2
-VOLUME_NAME=$3
 
 # Constants
 CONTAINER_DIR="/var/www"
@@ -19,8 +18,8 @@ PROJECT_PATH="$LOCAL_DIR/$PROJECT_NAME"
 VIRTUAL_HOST="${PROJECT_NAME}.loc"
 
 # Validate input
-if [ $# -ne 3 ]; then
-    echo "Usage: $0 <project_name> <local_dir> <volume_name>"
+if [ $# -ne 2 ]; then
+    echo "Usage: $0 <project_name> <local_dir>"
     exit 1
 fi
 
@@ -71,14 +70,6 @@ else
         exit 1
     fi
 fi
-
-# Create Docker volume if it doesn't exist, or remove and recreate if it exists
-echo "🔄 Preparing Docker volume..."
-if docker volume inspect $VOLUME_NAME > /dev/null 2>&1; then
-    echo "📦 Removing existing volume to ensure clean installation..."
-    docker volume rm $VOLUME_NAME --force 2>/dev/null || true
-fi
-docker volume create $VOLUME_NAME
 
 # Create proxy network if it doesn't exist
 echo "🌐 Setting up proxy network..."
@@ -182,9 +173,6 @@ networks:
     driver: bridge
   ${PROXY_NETWORK}:
     external: true
-
-volumes:
-  ${VOLUME_NAME}:
 EOF
 
 # Start Laravel app container using Docker Compose

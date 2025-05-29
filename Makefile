@@ -41,7 +41,7 @@ init: ## Initialize a new Laravel project with Docker containers and virtual hos
 	echo "📁 Location: /var/www/$$PROJECT_NAME"; \
 	echo "📝 Files will be accessible for editing"; \
 	echo ""; \
-	./init-laravel-container.sh $$PROJECT_NAME /var/www $${PROJECT_NAME}_volume; \
+	./init-laravel-container.sh $$PROJECT_NAME /var/www; \
 	echo ""; \
 	echo "🔧 To access your application, add this line to your /etc/hosts file:"; \
 	echo "   127.0.0.1 $$PROJECT_NAME.loc"; \
@@ -66,11 +66,16 @@ status: ## Check the status of a Laravel project
 	@echo "🐳 Docker Containers:"
 	@docker ps --filter "name=$(PROJECT_NAME)" --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}" 2>/dev/null || echo "No containers found"
 	@echo ""
-	@echo "💾 Docker Volumes:"
-	@docker volume ls --filter "name=$(PROJECT_NAME)" --format "table {{.Name}}\t{{.Driver}}" 2>/dev/null || echo "No volumes found"
-	@echo ""
 	@echo "🌐 Networks:"
 	@docker network ls --filter "name=$(PROJECT_NAME)" --format "table {{.Name}}\t{{.Driver}}" 2>/dev/null || echo "No networks found"
+	@echo ""
+	@echo "📁 Project Files:"
+	@if [ -d "/var/www/$(PROJECT_NAME)" ]; then \
+		echo "✅ Project directory exists: /var/www/$(PROJECT_NAME)"; \
+		ls -la /var/www/$(PROJECT_NAME) | head -5; \
+	else \
+		echo "❌ Project directory not found"; \
+	fi
 	@echo ""
 	@if docker exec $(PROJECT_NAME)_php test -f /var/www/artisan 2>/dev/null; then \
 		echo "✅ Laravel Status: Running"; \
@@ -90,9 +95,6 @@ clean: ## Remove Docker containers and volumes for a project
 	@docker-compose -p $(PROJECT_NAME) -f /var/www/$(PROJECT_NAME)/docker-compose.yml down -v --remove-orphans 2>/dev/null || true
 	@docker stop $(PROJECT_NAME)_php $(PROJECT_NAME)_nginx 2>/dev/null || true
 	@docker rm $(PROJECT_NAME)_php $(PROJECT_NAME)_nginx 2>/dev/null || true
-	@echo "Removing volumes..."
-	@docker volume rm $(PROJECT_NAME)_volume --force 2>/dev/null || true
-	@docker volume rm $(PROJECT_NAME)_$(PROJECT_NAME)_volume --force 2>/dev/null || true
 	@echo "Removing networks..."
 	@docker network rm $(PROJECT_NAME)_net 2>/dev/null || true
 	@docker network rm $(PROJECT_NAME)_$(PROJECT_NAME)_net 2>/dev/null || true
