@@ -4,12 +4,14 @@ A robust shell script and Makefile system for quickly setting up Laravel project
 
 ## ✨ Features
 
-- **Virtual Host Support**: Access projects via custom domains (e.g., `myapp.loc`)
+- **Dual Environment Support**: Deploy locally (`PROJECT.loc`) or production (`PROJECT.laracopilot.com`)
+- **Virtual Host Support**: Access projects via custom domains with automatic subdomain creation
 - **One-command Laravel setup**: Initialize a complete Laravel project with Docker containers
 - **Direct File Access**: Laravel files are accessible in the host directory for easy editing
 - **Automatic Laravel installation**: Downloads and configures Laravel directly in the project directory
 - **Smart Port Detection**: Automatically finds available ports in 80-90 range to avoid conflicts
 - **Proper Ownership**: All projects created with www-data ownership for web server compatibility
+- **Production Ready**: Enhanced nginx config with security headers and performance optimizations
 - **Reverse Proxy**: Shared Nginx proxy for handling multiple virtual hosts
 - **Bind Mount Architecture**: Project files are directly accessible on the host for development
 - **Health checks**: Proper container health monitoring and startup verification
@@ -30,18 +32,28 @@ A robust shell script and Makefile system for quickly setting up Laravel project
 ## 🚀 Quick Start
 
 ### Initialize a new Laravel project
+
+**Local Development:**
 ```bash
 make init PROJECT_NAME=my-app
+# Creates: my-app.loc
 ```
 
-### Add virtual host to your system
+**Production Deployment:**
+```bash
+make init PROJECT_NAME=api ENVIRONMENT=production
+# Creates: api.laracopilot.com subdomain
+```
+
+### Add virtual host to your system (Local only)
 ```bash
 make add-host PROJECT_NAME=my-app
 # or manually: ./manage-hosts.sh add my-app
 ```
 
 ### Access your application
-Visit `http://my-app.loc:PORT` in your browser (PORT will be auto-detected and shown in setup output)
+- **Local:** `http://my-app.loc:PORT` (PORT auto-detected)
+- **Production:** `http://api.laracopilot.com` (requires DNS configuration)
 
 ### Check project status
 ```bash
@@ -61,7 +73,7 @@ make help
 
 ## 📋 Usage Examples
 
-### Basic project creation with virtual host
+### Local Development Setup
 ```bash
 # Create the project
 make init PROJECT_NAME=blog
@@ -69,25 +81,35 @@ make init PROJECT_NAME=blog
 # Add to hosts file
 make add-host PROJECT_NAME=blog
 
-# Visit http://blog.loc
+# Visit http://blog.loc:PORT
 ```
 
-### Multiple projects
+### Production Deployment for LaraCopilot.com
 ```bash
-# Create multiple projects
-make init PROJECT_NAME=api
-make init PROJECT_NAME=frontend
-make init PROJECT_NAME=admin
+# Create production project
+make init PROJECT_NAME=api ENVIRONMENT=production
 
-# Add all to hosts file
-make add-host PROJECT_NAME=api
-make add-host PROJECT_NAME=frontend  
-make add-host PROJECT_NAME=admin
+# Configure DNS: api.laracopilot.com -> Server IP
+# Visit http://api.laracopilot.com
+```
 
-# Access at (PORT auto-detected):
-# http://api.loc:PORT
-# http://frontend.loc:PORT
-# http://admin.loc:PORT
+### Multiple Projects (Mixed Environments)
+```bash
+# Local development projects
+make init PROJECT_NAME=dev-api ENVIRONMENT=local
+make init PROJECT_NAME=testing
+
+# Production subdomains
+make init PROJECT_NAME=docs ENVIRONMENT=production
+make init PROJECT_NAME=admin ENVIRONMENT=production
+
+# Add local projects to hosts file
+make add-host PROJECT_NAME=dev-api
+make add-host PROJECT_NAME=testing
+
+# Access URLs:
+# Local: http://dev-api.loc:PORT, http://testing.loc:PORT
+# Production: http://docs.laracopilot.com, http://admin.laracopilot.com
 ```
 
 ### Manage hosts entries
@@ -143,6 +165,50 @@ All Laravel files are directly accessible in `/var/www/copilot-infra/PROJECT_NAM
 sudo usermod -a -G www-data $USER
 # Log out and back in for changes to take effect
 ```
+
+## 🌍 Production Deployment Guide
+
+### DNS Configuration for LaraCopilot.com Subdomains
+
+1. **Create Production Project:**
+   ```bash
+   make init PROJECT_NAME=api ENVIRONMENT=production
+   ```
+
+2. **Configure DNS A Record:**
+   - Add A record: `api.laracopilot.com` → `YOUR_SERVER_IP`
+   - DNS propagation may take 5-60 minutes
+
+3. **Verify DNS Resolution:**
+   ```bash
+   nslookup api.laracopilot.com
+   dig api.laracopilot.com
+   ```
+
+4. **Access Your Application:**
+   - HTTP: `http://api.laracopilot.com`
+   - For HTTPS, configure SSL certificate
+
+### SSL Certificate Setup (Recommended for Production)
+
+```bash
+# Using Let's Encrypt (example)
+sudo apt install certbot python3-certbot-nginx
+sudo certbot --nginx -d api.laracopilot.com
+
+# Manual certificate (if you have custom certs)
+# Update nginx config to include SSL configuration
+```
+
+### Production Security Checklist
+
+- ✅ DNS A record configured
+- ✅ Firewall allows ports 80/443
+- ✅ SSL certificate installed
+- ✅ Environment variables secured
+- ✅ Laravel app key generated
+- ✅ Database credentials configured
+- ✅ File permissions set correctly (www-data)
 
 ```bash
 # Edit routes
@@ -209,9 +275,21 @@ Route::get('/', function () {
 - **Domain Routing**: Routes requests based on `Host` header
 
 ### Virtual Host Configuration
-- **Pattern**: `PROJECT_NAME.loc` (e.g., `myapp.loc`, `blog.loc`)
+- **Local Pattern**: `PROJECT_NAME.loc` (e.g., `myapp.loc`, `blog.loc`)
+- **Production Pattern**: `PROJECT_NAME.laracopilot.com` (e.g., `api.laracopilot.com`, `docs.laracopilot.com`)
 - **Local Resolution**: Uses `/etc/hosts` file for local domain resolution
-- **SSL Ready**: Can be extended with SSL certificates if needed
+- **Production Resolution**: Requires DNS A record configuration
+- **SSL Ready**: Enhanced for production with security headers and HTTPS support
+
+### LaraCopilot.com Integration
+This infrastructure is designed to work with the [LaraCopilot AI-powered Laravel development platform](https://laracopilot.com/). 
+
+**Production Deployment Features:**
+- **Automatic Subdomains**: Creates `PROJECT_NAME.laracopilot.com` subdomains
+- **DNS Configuration**: Requires A record pointing to your server IP
+- **Security Headers**: Production-ready nginx configuration with security headers
+- **Performance Optimization**: Static file caching and optimized FastCGI settings
+- **SSL Ready**: Prepared for HTTPS certificate configuration
 
 ### File Ownership & Permissions
 - **Base Directory**: `/var/www/copilot-infra/` owned by www-data:www-data (755)
@@ -252,7 +330,11 @@ The included `manage-hosts.sh` script provides:
 
 ### Direct script usage
 ```bash
+# Local development
 ./init-laravel-container.sh project_name /var/www/copilot-infra
+
+# Production deployment
+ENVIRONMENT=production ./init-laravel-container.sh project_name /var/www/copilot-infra
 ```
 
 ### Container access
@@ -335,6 +417,13 @@ docker restart laravel_proxy
 - Base directory not accessible: `sudo chown www-data:www-data /var/www/copilot-infra`
 - Project creation fails: Check if you have sudo access
 - Files not editable: Add your user to www-data group: `sudo usermod -a -G www-data $USER`
+
+**Production deployment issues**
+- Subdomain not accessible: Verify DNS A record points to server IP
+- Check DNS propagation: `nslookup PROJECT_NAME.laracopilot.com`
+- Firewall blocking: Ensure ports 80/443 are open
+- SSL certificate needed: Configure Let's Encrypt or custom certificate
+- Domain ownership: Ensure you control the laracopilot.com domain and DNS
 
 **Laravel files not accessible for editing**
 - Verify project directory exists: `ls -la /var/www/copilot-infra/PROJECT_NAME/`

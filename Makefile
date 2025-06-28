@@ -2,24 +2,37 @@
 
 # Default values (only used for init when not specified)
 DEFAULT_PROJECT_NAME ?= laravel-app
+DEFAULT_ENVIRONMENT ?= local
 
 help: ## Show this help message
 	@echo "Laravel Container Initialization with Virtual Hosts"
 	@echo "=================================================="
 	@echo ""
-	@echo "Usage: make init PROJECT_NAME=<name>"
+	@echo "Usage: make init PROJECT_NAME=<name> [ENVIRONMENT=<env>]"
 	@echo ""
 	@echo "Parameters:"
 	@echo "  PROJECT_NAME  - Name of the Laravel project (default: laravel-app)"
-	@echo "                  Virtual host will be: <PROJECT_NAME>.loc"
-	@echo "                  Files will be accessible at: /var/www/copilot-infra/<PROJECT_NAME>"
+	@echo "  ENVIRONMENT   - Deployment environment: 'local' or 'production' (default: local)"
+	@echo ""
+	@echo "Virtual Hosts:"
+	@echo "  Local:        PROJECT_NAME.loc (requires /etc/hosts entry)"
+	@echo "  Production:   PROJECT_NAME.laracopilot.com (requires DNS configuration)"
+	@echo ""
+	@echo "Files Location:"
+	@echo "  /var/www/copilot-infra/<PROJECT_NAME>"
 	@echo ""
 	@echo "Examples:"
-	@echo "  make init PROJECT_NAME=my-app     # Creates virtual host: my-app.loc"
-	@echo "  make init PROJECT_NAME=blog       # Creates virtual host: blog.loc"
+	@echo "  # Local development:"
+	@echo "  make init PROJECT_NAME=my-app                     # Creates: my-app.loc"
+	@echo "  make init PROJECT_NAME=blog ENVIRONMENT=local     # Creates: blog.loc"
+	@echo ""
+	@echo "  # Production deployment:"
+	@echo "  make init PROJECT_NAME=api ENVIRONMENT=production # Creates: api.laracopilot.com"
+	@echo ""
+	@echo "  # Other commands:"
 	@echo "  make status PROJECT_NAME=my-app"
 	@echo "  make clean PROJECT_NAME=my-app"
-	@echo "  make add-host PROJECT_NAME=my-app"
+	@echo "  make add-host PROJECT_NAME=my-app    # Only for local development"
 	@echo ""
 	@echo "Note: After initialization:"
 	@echo "  1. Laravel files will be in /var/www/copilot-infra/<PROJECT_NAME> for editing"
@@ -33,29 +46,55 @@ init: ## Initialize a new Laravel project with Docker containers and virtual hos
 	@if [ -z "$(PROJECT_NAME)" ]; then \
 		PROJECT_NAME="$(DEFAULT_PROJECT_NAME)"; \
 		echo "⚠️  No PROJECT_NAME specified, using default: $$PROJECT_NAME"; \
-		echo "Usage: make init PROJECT_NAME=<name>"; \
+		echo "Usage: make init PROJECT_NAME=<name> [ENVIRONMENT=<env>]"; \
 	else \
 		PROJECT_NAME="$(PROJECT_NAME)"; \
 	fi; \
+	if [ -z "$(ENVIRONMENT)" ]; then \
+		ENVIRONMENT="$(DEFAULT_ENVIRONMENT)"; \
+	else \
+		ENVIRONMENT="$(ENVIRONMENT)"; \
+	fi; \
 	echo "🚀 Initializing Laravel project: $$PROJECT_NAME"; \
-	echo "🌐 Virtual Host: $$PROJECT_NAME.loc"; \
+	echo "🌍 Environment: $$ENVIRONMENT"; \
+	if [ "$$ENVIRONMENT" = "production" ]; then \
+		echo "🌐 Virtual Host: $$PROJECT_NAME.laracopilot.com"; \
+	else \
+		echo "🌐 Virtual Host: $$PROJECT_NAME.loc"; \
+	fi; \
 	echo "📁 Location: /var/www/copilot-infra/$$PROJECT_NAME"; \
 	echo "📝 Files will be accessible for editing"; \
 	echo ""; \
-	./init-laravel-container.sh $$PROJECT_NAME /var/www/copilot-infra; \
+	ENVIRONMENT=$$ENVIRONMENT ./init-laravel-container.sh $$PROJECT_NAME /var/www/copilot-infra; \
 	echo ""; \
-	echo "🔧 To access your application, add this line to your /etc/hosts file:"; \
-	echo "   127.0.0.1 $$PROJECT_NAME.loc"; \
-	echo ""; \
-	if [ -f /tmp/laravel_proxy_port ]; then \
-		source /tmp/laravel_proxy_port; \
-		if [ "$$PROXY_PORT" = "80" ]; then \
-			echo "Then visit: http://$$PROJECT_NAME.loc"; \
+	if [ "$$ENVIRONMENT" = "production" ]; then \
+		echo "🔧 For production deployment:"; \
+		echo "   1. Configure DNS A record: $$PROJECT_NAME.laracopilot.com -> Server IP"; \
+		if [ -f /tmp/laravel_proxy_port ]; then \
+			source /tmp/laravel_proxy_port; \
+			if [ "$$PROXY_PORT" = "80" ]; then \
+				echo "   2. Visit: http://$$PROJECT_NAME.laracopilot.com"; \
+			else \
+				echo "   2. Visit: http://$$PROJECT_NAME.laracopilot.com:$$PROXY_PORT"; \
+			fi; \
 		else \
-			echo "Then visit: http://$$PROJECT_NAME.loc:$$PROXY_PORT"; \
+			echo "   2. Visit: http://$$PROJECT_NAME.laracopilot.com"; \
 		fi; \
+		echo "   3. Configure SSL certificate for HTTPS"; \
 	else \
-		echo "Then visit: http://$$PROJECT_NAME.loc (port will be auto-detected)"; \
+		echo "🔧 To access your application, add this line to your /etc/hosts file:"; \
+		echo "   127.0.0.1 $$PROJECT_NAME.loc"; \
+		echo ""; \
+		if [ -f /tmp/laravel_proxy_port ]; then \
+			source /tmp/laravel_proxy_port; \
+			if [ "$$PROXY_PORT" = "80" ]; then \
+				echo "Then visit: http://$$PROJECT_NAME.loc"; \
+			else \
+				echo "Then visit: http://$$PROJECT_NAME.loc:$$PROXY_PORT"; \
+			fi; \
+		else \
+			echo "Then visit: http://$$PROJECT_NAME.loc (port will be auto-detected)"; \
+		fi; \
 	fi; \
 	echo ""; \
 	echo "📝 Edit Laravel files in: /var/www/copilot-infra/$$PROJECT_NAME"; \
