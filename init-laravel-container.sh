@@ -8,7 +8,7 @@ PROJECT_NAME=$1
 LOCAL_DIR=$2
 
 # Constants
-CONTAINER_DIR="/var/www"
+CONTAINER_DIR="/var/www/copilot-infra"
 PHP_CONTAINER="${PROJECT_NAME}_php"
 NGINX_CONTAINER="${PROJECT_NAME}_nginx"
 PROXY_CONTAINER="laravel_proxy"
@@ -16,6 +16,27 @@ NETWORK_NAME="${PROJECT_NAME}_net"
 PROXY_NETWORK="laravel_proxy_net"
 PROJECT_PATH="$LOCAL_DIR/$PROJECT_NAME"
 VIRTUAL_HOST="${PROJECT_NAME}.loc"
+
+# Function to find available port in 80-90 range
+find_available_port() {
+    for port in {80..90}; do
+        # Check if port is already in use by any process
+        if ! ss -tuln 2>/dev/null | grep -q ":$port " && ! netstat -tuln 2>/dev/null | grep -q ":$port "; then
+            # Check if port is already used by Docker containers
+            if ! docker ps --format "table {{.Ports}}" 2>/dev/null | grep -q ":$port->"; then
+                # Double-check by trying to bind to the port
+                if timeout 1 bash -c "</dev/tcp/127.0.0.1/$port" 2>/dev/null; then
+                    continue  # Port is in use
+                else
+                    echo $port
+                    return 0
+                fi
+            fi
+        fi
+    done
+    # Fallback to port 8080 if no port in 80-90 range is available
+    echo 8080
+}
 
 # Validate input
 if [ $# -ne 2 ]; then
@@ -33,14 +54,29 @@ docker info >/dev/null 2>&1 || { echo "❌ Docker daemon is not running."; exit 
 echo "📦 Initializing Laravel container for project: $PROJECT_NAME"
 echo "🌐 Virtual Host: $VIRTUAL_HOST"
 
+# Create base copilot-infra directory with www-data ownership if not exists
+if [ ! -d "$LOCAL_DIR" ]; then
+    echo "🏗️  Creating base directory: $LOCAL_DIR"
+    sudo mkdir -p "$LOCAL_DIR"
+    sudo chown www-data:www-data "$LOCAL_DIR"
+    sudo chmod 755 "$LOCAL_DIR"
+    echo "✅ Base directory created with www-data ownership"
+fi
+
 # Create project directory if not exists
-mkdir -p "$PROJECT_PATH"
+echo "📁 Creating project directory: $PROJECT_PATH"
+sudo mkdir -p "$PROJECT_PATH"
+sudo chown www-data:www-data "$PROJECT_PATH"
+sudo chmod 755 "$PROJECT_PATH"
 
 # Check if Laravel is already installed in the project directory
 if [ -f "$PROJECT_PATH/artisan" ]; then
     echo "✅ Laravel already exists in $PROJECT_PATH"
 else
     echo "📦 Installing Laravel in project directory..."
+    
+    # Temporarily allow current user to write to project directory
+    sudo chmod 775 "$PROJECT_PATH"
     
     # Install Laravel directly in the project directory using Composer
     if command -v composer >/dev/null 2>&1; then
@@ -54,17 +90,21 @@ else
             composer create-project laravel/laravel . --no-interaction
     fi
     
-    # Set proper permissions
+    # Set proper ownership and permissions for all Laravel files
     if [ -f "$PROJECT_PATH/artisan" ]; then
-        echo "🔧 Setting proper permissions..."
-        chmod -R 775 "$PROJECT_PATH/storage" "$PROJECT_PATH/bootstrap/cache" 2>/dev/null || true
+        echo "🔧 Setting proper www-data ownership and permissions..."
+        sudo chown -R www-data:www-data "$PROJECT_PATH"
+        sudo chmod -R 755 "$PROJECT_PATH"
+        sudo chmod -R 775 "$PROJECT_PATH/storage" "$PROJECT_PATH/bootstrap/cache" 2>/dev/null || true
         
         # Create .env if it doesn't exist
         if [ ! -f "$PROJECT_PATH/.env" ] && [ -f "$PROJECT_PATH/.env.example" ]; then
-            cp "$PROJECT_PATH/.env.example" "$PROJECT_PATH/.env"
+            sudo cp "$PROJECT_PATH/.env.example" "$PROJECT_PATH/.env"
+            sudo chown www-data:www-data "$PROJECT_PATH/.env"
+            sudo chmod 644 "$PROJECT_PATH/.env"
         fi
         
-        echo "✅ Laravel installed successfully in $PROJECT_PATH"
+        echo "✅ Laravel installed successfully in $PROJECT_PATH with www-data ownership"
     else
         echo "❌ Laravel installation failed"
         exit 1
@@ -78,7 +118,7 @@ if ! docker network inspect $PROXY_NETWORK > /dev/null 2>&1; then
 fi
 
 # Create Dockerfile with simpler setup since Laravel is already installed
-cat <<EOF > "$PROJECT_PATH/Dockerfile"
+sudo tee "$PROJECT_PATH/Dockerfile" > /dev/null <<EOF
 FROM php:8.3-fpm
 
 RUN apt-get update && apt-get install -y \
@@ -108,8 +148,12 @@ WORKDIR $CONTAINER_DIR
 CMD ["/usr/local/bin/laravel-init.sh"]
 EOF
 
+# Set ownership for Dockerfile
+sudo chown www-data:www-data "$PROJECT_PATH/Dockerfile"
+sudo chmod 644 "$PROJECT_PATH/Dockerfile"
+
 # Create nginx.conf for the project
-cat <<EOF > "$PROJECT_PATH/nginx.conf"
+sudo tee "$PROJECT_PATH/nginx.conf" > /dev/null <<EOF
 server {
     listen 80;
     index index.php index.html;
@@ -134,8 +178,12 @@ server {
 }
 EOF
 
+# Set ownership for nginx.conf
+sudo chown www-data:www-data "$PROJECT_PATH/nginx.conf"
+sudo chmod 644 "$PROJECT_PATH/nginx.conf"
+
 # Create docker-compose.yml
-cat <<EOF > "$PROJECT_PATH/docker-compose.yml"
+sudo tee "$PROJECT_PATH/docker-compose.yml" > /dev/null <<EOF
 services:
   app:
     build:
@@ -175,6 +223,10 @@ networks:
     external: true
 EOF
 
+# Set ownership for docker-compose.yml
+sudo chown www-data:www-data "$PROJECT_PATH/docker-compose.yml"
+sudo chmod 644 "$PROJECT_PATH/docker-compose.yml"
+
 # Start Laravel app container using Docker Compose
 echo "🚀 Starting containers..."
 docker-compose -p $PROJECT_NAME -f $PROJECT_PATH/docker-compose.yml up -d --build
@@ -184,16 +236,30 @@ echo "🔄 Setting up reverse proxy..."
 setup_proxy() {
     # Check if proxy container exists
     if ! docker ps -a --format '{{.Names}}' | grep -q "^${PROXY_CONTAINER}$"; then
-        echo "📦 Creating reverse proxy container..."
+        # Find available port
+        PROXY_PORT=$(find_available_port)
+        echo "📦 Creating reverse proxy container on port $PROXY_PORT..."
+        
         docker run -d \
             --name $PROXY_CONTAINER \
             --restart unless-stopped \
-            -p 80:80 \
+            -p $PROXY_PORT:80 \
             -v /var/run/docker.sock:/tmp/docker.sock:ro \
             --network $PROXY_NETWORK \
             nginxproxy/nginx-proxy:latest
+        
+        # Store the port for future reference
+        echo "PROXY_PORT=$PROXY_PORT" > /tmp/laravel_proxy_port
+        echo "✅ Reverse proxy created on port $PROXY_PORT"
     else
         echo "✅ Reverse proxy already exists"
+        # Get the existing port
+        PROXY_PORT=$(docker port $PROXY_CONTAINER 80/tcp 2>/dev/null | cut -d':' -f2)
+        if [ -z "$PROXY_PORT" ]; then
+            PROXY_PORT=80  # fallback
+        fi
+        echo "PROXY_PORT=$PROXY_PORT" > /tmp/laravel_proxy_port
+        
         # Ensure it's running
         if ! docker ps --format '{{.Names}}' | grep -q "^${PROXY_CONTAINER}$"; then
             echo "🔄 Starting existing reverse proxy..."
@@ -246,17 +312,30 @@ else
     exit 1
 fi
 
+# Get the proxy port for final output
+if [ -f /tmp/laravel_proxy_port ]; then
+    source /tmp/laravel_proxy_port
+else
+    PROXY_PORT=80  # fallback
+fi
+
 echo ""
 echo "🎉 Laravel project '$PROJECT_NAME' has been successfully initialized!"
 echo "🌐 Virtual Host: $VIRTUAL_HOST"
+echo "🚀 Proxy Port: $PROXY_PORT"
 echo "📁 Project files are accessible at: $PROJECT_PATH"
+echo "👤 Files owned by: www-data:www-data"
 echo "📝 You can now edit Laravel files directly in: $PROJECT_PATH"
 echo ""
 echo "🔧 To access your application:"
 echo "   1. Add this line to your /etc/hosts file:"
 echo "      127.0.0.1 $VIRTUAL_HOST"
 echo ""
-echo "   2. Then visit: http://$VIRTUAL_HOST"
+if [ "$PROXY_PORT" = "80" ]; then
+    echo "   2. Then visit: http://$VIRTUAL_HOST"
+else
+    echo "   2. Then visit: http://$VIRTUAL_HOST:$PROXY_PORT"
+fi
 echo ""
 echo "💡 Useful commands:"
 echo "   - Edit files: Open $PROJECT_PATH in your IDE"

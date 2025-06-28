@@ -12,7 +12,7 @@ help: ## Show this help message
 	@echo "Parameters:"
 	@echo "  PROJECT_NAME  - Name of the Laravel project (default: laravel-app)"
 	@echo "                  Virtual host will be: <PROJECT_NAME>.loc"
-	@echo "                  Files will be accessible at: /var/www/<PROJECT_NAME>"
+	@echo "                  Files will be accessible at: /var/www/copilot-infra/<PROJECT_NAME>"
 	@echo ""
 	@echo "Examples:"
 	@echo "  make init PROJECT_NAME=my-app     # Creates virtual host: my-app.loc"
@@ -22,8 +22,9 @@ help: ## Show this help message
 	@echo "  make add-host PROJECT_NAME=my-app"
 	@echo ""
 	@echo "Note: After initialization:"
-	@echo "  1. Laravel files will be in /var/www/<PROJECT_NAME> for editing"
-	@echo "  2. Add this to your /etc/hosts file: 127.0.0.1 <PROJECT_NAME>.loc"
+	@echo "  1. Laravel files will be in /var/www/copilot-infra/<PROJECT_NAME> for editing"
+	@echo "  2. Files will be owned by www-data for web server compatibility"
+	@echo "  3. Add this to your /etc/hosts file: 127.0.0.1 <PROJECT_NAME>.loc"
 	@echo ""
 	@echo "Available targets:"
 	@awk 'BEGIN {FS = ":.*?## "} /^[a-zA-Z_-]+:.*?## / {printf "  %-15s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -38,17 +39,26 @@ init: ## Initialize a new Laravel project with Docker containers and virtual hos
 	fi; \
 	echo "🚀 Initializing Laravel project: $$PROJECT_NAME"; \
 	echo "🌐 Virtual Host: $$PROJECT_NAME.loc"; \
-	echo "📁 Location: /var/www/$$PROJECT_NAME"; \
+	echo "📁 Location: /var/www/copilot-infra/$$PROJECT_NAME"; \
 	echo "📝 Files will be accessible for editing"; \
 	echo ""; \
-	./init-laravel-container.sh $$PROJECT_NAME /var/www; \
+	./init-laravel-container.sh $$PROJECT_NAME /var/www/copilot-infra; \
 	echo ""; \
 	echo "🔧 To access your application, add this line to your /etc/hosts file:"; \
 	echo "   127.0.0.1 $$PROJECT_NAME.loc"; \
 	echo ""; \
-	echo "Then visit: http://$$PROJECT_NAME.loc"; \
+	if [ -f /tmp/laravel_proxy_port ]; then \
+		source /tmp/laravel_proxy_port; \
+		if [ "$$PROXY_PORT" = "80" ]; then \
+			echo "Then visit: http://$$PROJECT_NAME.loc"; \
+		else \
+			echo "Then visit: http://$$PROJECT_NAME.loc:$$PROXY_PORT"; \
+		fi; \
+	else \
+		echo "Then visit: http://$$PROJECT_NAME.loc (port will be auto-detected)"; \
+	fi; \
 	echo ""; \
-	echo "📝 Edit Laravel files in: /var/www/$$PROJECT_NAME"; \
+	echo "📝 Edit Laravel files in: /var/www/copilot-infra/$$PROJECT_NAME"; \
 	echo ""; \
 	echo "💡 Quick hosts file management:"; \
 	echo "   ./manage-hosts.sh add $$PROJECT_NAME    # Add hosts entry"; \
@@ -66,13 +76,26 @@ status: ## Check the status of a Laravel project
 	@echo "🐳 Docker Containers:"
 	@docker ps --filter "name=$(PROJECT_NAME)" --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}" 2>/dev/null || echo "No containers found"
 	@echo ""
+	@echo "🌐 Reverse Proxy:"
+	@if docker ps --format "{{.Names}}" | grep -q "laravel_proxy"; then \
+		PROXY_PORT=$$(docker port laravel_proxy 80/tcp 2>/dev/null | cut -d':' -f2); \
+		if [ -n "$$PROXY_PORT" ]; then \
+			echo "✅ Running on port $$PROXY_PORT"; \
+			echo "🔗 Access URL: http://$(PROJECT_NAME).loc:$$PROXY_PORT"; \
+		else \
+			echo "✅ Running (port unknown)"; \
+		fi; \
+	else \
+		echo "❌ Not running"; \
+	fi
+	@echo ""
 	@echo "🌐 Networks:"
 	@docker network ls --filter "name=$(PROJECT_NAME)" --format "table {{.Name}}\t{{.Driver}}" 2>/dev/null || echo "No networks found"
 	@echo ""
 	@echo "📁 Project Files:"
-	@if [ -d "/var/www/$(PROJECT_NAME)" ]; then \
-		echo "✅ Project directory exists: /var/www/$(PROJECT_NAME)"; \
-		ls -la /var/www/$(PROJECT_NAME) | head -5; \
+	@if [ -d "/var/www/copilot-infra/$(PROJECT_NAME)" ]; then \
+		echo "✅ Project directory exists: /var/www/copilot-infra/$(PROJECT_NAME)"; \
+		ls -la /var/www/copilot-infra/$(PROJECT_NAME) | head -5; \
 	else \
 		echo "❌ Project directory not found"; \
 	fi
@@ -92,14 +115,14 @@ clean: ## Remove Docker containers and volumes for a project
 	fi
 	@echo "🧹 Cleaning up project: $(PROJECT_NAME)"
 	@echo "Stopping and removing containers..."
-	@docker-compose -p $(PROJECT_NAME) -f /var/www/$(PROJECT_NAME)/docker-compose.yml down -v --remove-orphans 2>/dev/null || true
+	@docker-compose -p $(PROJECT_NAME) -f /var/www/copilot-infra/$(PROJECT_NAME)/docker-compose.yml down -v --remove-orphans 2>/dev/null || true
 	@docker stop $(PROJECT_NAME)_php $(PROJECT_NAME)_nginx 2>/dev/null || true
 	@docker rm $(PROJECT_NAME)_php $(PROJECT_NAME)_nginx 2>/dev/null || true
 	@echo "Removing networks..."
 	@docker network rm $(PROJECT_NAME)_net 2>/dev/null || true
 	@docker network rm $(PROJECT_NAME)_$(PROJECT_NAME)_net 2>/dev/null || true
 	@echo "Removing project directory..."
-	@rm -rf /var/www/$(PROJECT_NAME) 2>/dev/null || true
+	@rm -rf /var/www/copilot-infra/$(PROJECT_NAME) 2>/dev/null || true
 	@echo "✅ Cleanup completed for $(PROJECT_NAME)"
 	@echo ""
 	@echo "🔧 Don't forget to remove this line from your /etc/hosts file:"

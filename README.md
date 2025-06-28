@@ -8,6 +8,8 @@ A robust shell script and Makefile system for quickly setting up Laravel project
 - **One-command Laravel setup**: Initialize a complete Laravel project with Docker containers
 - **Direct File Access**: Laravel files are accessible in the host directory for easy editing
 - **Automatic Laravel installation**: Downloads and configures Laravel directly in the project directory
+- **Smart Port Detection**: Automatically finds available ports in 80-90 range to avoid conflicts
+- **Proper Ownership**: All projects created with www-data ownership for web server compatibility
 - **Reverse Proxy**: Shared Nginx proxy for handling multiple virtual hosts
 - **Bind Mount Architecture**: Project files are directly accessible on the host for development
 - **Health checks**: Proper container health monitoring and startup verification
@@ -23,7 +25,7 @@ A robust shell script and Makefile system for quickly setting up Laravel project
 - Docker Compose
 - Make (for using the Makefile)
 - Bash shell
-- Sudo access (for managing `/etc/hosts` file)
+- Sudo access (for managing `/etc/hosts` file and setting www-data ownership)
 
 ## 🚀 Quick Start
 
@@ -39,7 +41,7 @@ make add-host PROJECT_NAME=my-app
 ```
 
 ### Access your application
-Visit `http://my-app.loc` in your browser
+Visit `http://my-app.loc:PORT` in your browser (PORT will be auto-detected and shown in setup output)
 
 ### Check project status
 ```bash
@@ -82,10 +84,10 @@ make add-host PROJECT_NAME=api
 make add-host PROJECT_NAME=frontend  
 make add-host PROJECT_NAME=admin
 
-# Access at:
-# http://api.loc
-# http://frontend.loc
-# http://admin.loc
+# Access at (PORT auto-detected):
+# http://api.loc:PORT
+# http://frontend.loc:PORT
+# http://admin.loc:PORT
 ```
 
 ### Manage hosts entries
@@ -105,7 +107,7 @@ make hosts-help
 When you run the initialization, the following structure is created:
 
 ```
-/var/www/PROJECT_NAME/
+/var/www/copilot-infra/PROJECT_NAME/
 ├── app/                    # Laravel application code (editable)
 ├── bootstrap/              # Laravel bootstrap files
 ├── config/                 # Laravel configuration files (editable)
@@ -134,20 +136,26 @@ Docker Resources:
 ## 📝 Development Workflow
 
 ### File Editing
-All Laravel files are directly accessible in `/var/www/PROJECT_NAME/` for editing:
+All Laravel files are directly accessible in `/var/www/copilot-infra/PROJECT_NAME/` for editing:
+
+**Note**: Files are owned by www-data. For easier editing, add your user to the www-data group:
+```bash
+sudo usermod -a -G www-data $USER
+# Log out and back in for changes to take effect
+```
 
 ```bash
 # Edit routes
-nano /var/www/my-app/routes/web.php
+nano /var/www/copilot-infra/my-app/routes/web.php
 
 # Edit views
-code /var/www/my-app/resources/views/
+code /var/www/copilot-infra/my-app/resources/views/
 
 # Edit controllers
-vim /var/www/my-app/app/Http/Controllers/
+vim /var/www/copilot-infra/my-app/app/Http/Controllers/
 
 # Edit configuration
-gedit /var/www/my-app/config/app.php
+gedit /var/www/copilot-infra/my-app/config/app.php
 ```
 
 ### Laravel Commands
@@ -187,7 +195,7 @@ echo "<?php
 use Illuminate\Support\Facades\Route;
 Route::get('/', function () {
     return '<h1>Hello from Demo Project!</h1>';
-});" > /var/www/demo/routes/web.php
+});" > /var/www/copilot-infra/demo/routes/web.php
 
 # Visit http://demo.loc to see your changes instantly!
 ```
@@ -197,13 +205,20 @@ Route::get('/', function () {
 ### Reverse Proxy Setup
 - **Shared Proxy**: One `laravel_proxy` container handles all virtual hosts
 - **Automatic Discovery**: Uses `nginxproxy/nginx-proxy` for automatic configuration
-- **Port 80**: All traffic goes through the proxy on port 80
+- **Smart Port Selection**: Automatically finds available ports in 80-90 range
 - **Domain Routing**: Routes requests based on `Host` header
 
 ### Virtual Host Configuration
 - **Pattern**: `PROJECT_NAME.loc` (e.g., `myapp.loc`, `blog.loc`)
 - **Local Resolution**: Uses `/etc/hosts` file for local domain resolution
 - **SSL Ready**: Can be extended with SSL certificates if needed
+
+### File Ownership & Permissions
+- **Base Directory**: `/var/www/copilot-infra/` owned by www-data:www-data (755)
+- **Project Files**: All Laravel files owned by www-data:www-data (755)
+- **Writable Directories**: `storage/` and `bootstrap/cache/` (775)
+- **Configuration Files**: `.env`, `docker-compose.yml`, etc. (644)
+- **Security**: Proper web server ownership prevents permission issues
 
 ## 🔍 Technical Details
 
@@ -215,14 +230,16 @@ Route::get('/', function () {
 - **Network Isolation**: Projects connected via shared proxy network
 
 ### Laravel Installation Process
-1. Creates project directory in `/var/www/PROJECT_NAME/`
-2. Installs Laravel directly in the host directory using Composer
-3. Sets up proper file permissions for Laravel directories
-4. Creates Docker containers with bind mounts to the project directory
-5. Sets up proxy network if not exists
-6. Configures environment and generates application key
-7. Connects to reverse proxy for virtual host routing
-8. Verifies installation with health checks
+1. Creates base directory `/var/www/copilot-infra/` with www-data ownership
+2. Creates project directory in `/var/www/copilot-infra/PROJECT_NAME/`
+3. Installs Laravel directly in the host directory using Composer
+4. Sets proper www-data ownership for all Laravel files and directories
+5. Configures appropriate permissions for web server access
+6. Creates Docker containers with bind mounts to the project directory
+7. Sets up proxy network if not exists
+8. Configures environment and generates application key
+9. Connects to reverse proxy for virtual host routing
+10. Verifies installation with health checks
 
 ### Hosts File Management
 The included `manage-hosts.sh` script provides:
@@ -235,7 +252,7 @@ The included `manage-hosts.sh` script provides:
 
 ### Direct script usage
 ```bash
-./init-laravel-container.sh project_name /var/www
+./init-laravel-container.sh project_name /var/www/copilot-infra
 ```
 
 ### Container access
@@ -270,13 +287,13 @@ docker exec PROJECT_NAME_php php /var/www/artisan test
 ### File Editing and Development
 ```bash
 # Open project in your favorite IDE
-code /var/www/PROJECT_NAME/
-subl /var/www/PROJECT_NAME/
-vim /var/www/PROJECT_NAME/
+code /var/www/copilot-infra/PROJECT_NAME/
+subl /var/www/copilot-infra/PROJECT_NAME/
+vim /var/www/copilot-infra/PROJECT_NAME/
 
 # Edit specific files
-nano /var/www/PROJECT_NAME/routes/web.php
-gedit /var/www/PROJECT_NAME/.env
+nano /var/www/copilot-infra/PROJECT_NAME/routes/web.php
+gedit /var/www/copilot-infra/PROJECT_NAME/.env
 ```
 
 ### Proxy management
@@ -302,9 +319,11 @@ docker restart laravel_proxy
 - Verify internet connection for Composer downloads
 - Check container logs: `docker logs PROJECT_NAME_php`
 
-**Port 80 already in use**
+**Port conflicts**
+- The system automatically detects available ports in 80-90 range
+- If all ports are busy, it falls back to port 8080
 - Stop conflicting services: `sudo systemctl stop apache2 nginx`
-- Check what's using port 80: `sudo netstat -tulpn | grep :80`
+- Check what's using ports: `sudo netstat -tulpn | grep :8[0-9]`
 - Kill the proxy and restart: `make clean-proxy && make init PROJECT_NAME=test`
 
 **Permission issues with hosts file**
@@ -312,15 +331,21 @@ docker restart laravel_proxy
 - Check hosts file permissions: `ls -la /etc/hosts`
 - Use the manual commands if script fails
 
+**Directory ownership issues**
+- Base directory not accessible: `sudo chown www-data:www-data /var/www/copilot-infra`
+- Project creation fails: Check if you have sudo access
+- Files not editable: Add your user to www-data group: `sudo usermod -a -G www-data $USER`
+
 **Laravel files not accessible for editing**
-- Verify project directory exists: `ls -la /var/www/PROJECT_NAME/`
-- Check file permissions: `ls -la /var/www/PROJECT_NAME/app/`
+- Verify project directory exists: `ls -la /var/www/copilot-infra/PROJECT_NAME/`
+- Check file permissions: `ls -la /var/www/copilot-infra/PROJECT_NAME/app/`
 - Ensure containers are using bind mounts: `docker inspect PROJECT_NAME_php`
 
 **File permission issues**
-- Check ownership: `ls -la /var/www/PROJECT_NAME/`
-- Fix permissions if needed: `sudo chown -R $USER:$USER /var/www/PROJECT_NAME/`
-- Ensure storage directories are writable: `chmod -R 775 /var/www/PROJECT_NAME/storage/`
+- Check ownership: `ls -la /var/www/copilot-infra/PROJECT_NAME/`
+- Fix www-data ownership: `sudo chown -R www-data:www-data /var/www/copilot-infra/PROJECT_NAME/`
+- Set proper permissions: `sudo chmod -R 755 /var/www/copilot-infra/PROJECT_NAME/`
+- Ensure storage directories are writable: `sudo chmod -R 775 /var/www/copilot-infra/PROJECT_NAME/storage/ /var/www/copilot-infra/PROJECT_NAME/bootstrap/cache/`
 
 ### Status Command Output
 
@@ -341,7 +366,7 @@ docker rm -f PROJECT_NAME_php PROJECT_NAME_nginx
 docker network rm PROJECT_NAME_net
 
 # Remove project directory
-rm -rf /var/www/PROJECT_NAME
+rm -rf /var/www/copilot-infra/PROJECT_NAME
 
 # Clean up hosts entry
 ./manage-hosts.sh remove PROJECT_NAME
@@ -363,7 +388,7 @@ rm -rf /var/www/PROJECT_NAME
 ## 🔄 Recent Improvements
 
 ### File Accessibility Enhancement
-- **Direct Host Access**: Laravel files are now directly accessible in `/var/www/PROJECT_NAME/`
+- **Direct Host Access**: Laravel files are now directly accessible in `/var/www/copilot-infra/PROJECT_NAME/`
 - **Bind Mount Architecture**: Uses bind mounts instead of Docker volumes for file access
 - **Real-time Editing**: Changes to files are immediately reflected in the running application
 - **IDE Integration**: Full support for IDEs and editors with syntax highlighting and debugging
@@ -372,6 +397,7 @@ rm -rf /var/www/PROJECT_NAME
 ### Virtual Host Implementation
 - **New Feature**: Complete virtual host support with reverse proxy
 - **Automatic Routing**: nginx-proxy handles virtual host routing automatically
+- **Smart Port Detection**: Automatically finds available ports to avoid conflicts
 - **Hosts Management**: Built-in tools for managing `/etc/hosts` entries
 - **Shared Infrastructure**: One proxy serves all projects efficiently
 
