@@ -1,0 +1,111 @@
+FROM php:8.3-fpm
+
+# Laravel 12 Master Image with Node.js Support
+# This image contains Laravel 12 + Node.js + all dependencies for instant project deployment
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    libzip-dev unzip curl git nginx supervisor && \
+    docker-php-ext-install zip pdo pdo_mysql && \
+    rm -rf /var/lib/apt/lists/*
+
+COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
+
+# Install NVM and latest Node.js
+ENV NVM_DIR="/root/.nvm"
+ENV NODE_VERSION="node"
+
+RUN curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.0/install.sh | bash \
+    && . "$NVM_DIR/nvm.sh" \
+    && nvm install $NODE_VERSION \
+    && nvm use $NODE_VERSION \
+    && nvm alias default $NODE_VERSION \
+    && ln -sf "$NVM_DIR/versions/node/$(nvm version default)/bin/node" /usr/local/bin/node \
+    && ln -sf "$NVM_DIR/versions/node/$(nvm version default)/bin/npm" /usr/local/bin/npm \
+    && ln -sf "$NVM_DIR/versions/node/$(nvm version default)/bin/npx" /usr/local/bin/npx
+
+# Install Laravel globally for faster project creation (Laravel 12)
+RUN composer global require laravel/installer
+
+# Add Composer global bin to PATH
+ENV PATH="$PATH:/root/.composer/vendor/bin"
+
+# Create a temporary Laravel installation to build assets
+RUN cd /tmp && \
+    composer create-project laravel/laravel temp-laravel --prefer-dist && \
+    cd temp-laravel && \
+    npm install && \
+    npm run build && \
+    cp -r public/build /root/default-build && \
+    rm -rf /tmp/temp-laravel
+
+# Create a dynamic initialization script
+RUN echo '#!/bin/bash\n\
+PROJECT_NAME=${PROJECT_NAME:-laravel-app}\n\
+CONTAINER_MOUNT_DIR=${CONTAINER_MOUNT_DIR:-/var/www}\n\
+\n\
+echo "🚀 Starting Laravel container: $PROJECT_NAME"\n\
+echo "📁 Mount directory: $CONTAINER_MOUNT_DIR"\n\
+\n\
+# Display Node.js information\n\
+echo "🟢 Node.js version: $(node --version 2>/dev/null || echo \"Not available\")"\n\
+echo "📦 NPM version: $(npm --version 2>/dev/null || echo \"Not available\")"\n\
+\n\
+# Check if Laravel project exists, if not create it\n\
+if [ ! -f "$CONTAINER_MOUNT_DIR/artisan" ]; then\n\
+    echo "📦 Creating new Laravel 12 project in $CONTAINER_MOUNT_DIR..."\n\
+    cd /tmp\n\
+    composer create-project laravel/laravel laravel-temp --prefer-dist\n\
+    cp -r laravel-temp/* "$CONTAINER_MOUNT_DIR/"\n\
+    cp laravel-temp/.env.example "$CONTAINER_MOUNT_DIR/" 2>/dev/null || true\n\
+    cp laravel-temp/.gitignore "$CONTAINER_MOUNT_DIR/" 2>/dev/null || true\n\
+    rm -rf laravel-temp\n\
+    cd "$CONTAINER_MOUNT_DIR"\n\
+    echo "✅ Laravel 12 project created successfully"\n\
+    \n\
+    # Copy pre-built assets if they exist\n\
+    if [ -d "/root/default-build" ]; then\n\
+        echo "📦 Copying pre-built assets..."\n\
+        mkdir -p "$CONTAINER_MOUNT_DIR/public/build"\n\
+        cp -r /root/default-build/* "$CONTAINER_MOUNT_DIR/public/build/"\n\
+        echo "✅ Pre-built assets copied successfully"\n\
+    fi\n\
+else\n\
+    echo "✅ Laravel project already exists"\n\
+    cd "$CONTAINER_MOUNT_DIR"\n\
+fi\n\
+\n\
+# Setup Laravel environment\n\
+if [ -f ".env.example" ] && [ ! -f ".env" ]; then\n\
+    echo "📄 Setting up .env file..."\n\
+    cp .env.example .env\n\
+fi\n\
+\n\
+# Generate application key if not exists\n\
+if ! grep -q "APP_KEY=base64:" .env 2>/dev/null; then\n\
+    echo "🔑 Generating Laravel application key..."\n\
+    php artisan key:generate --force\n\
+fi\n\
+\n\
+# Install npm dependencies if package.json exists and build directory doesnt exist\n\
+if [ -f "package.json" ] && [ ! -d "public/build" ]; then\n\
+    echo "📦 Installing npm dependencies..."\n\
+    npm install\n\
+    echo "🏗️ Building assets..."\n\
+    npm run build\n\
+    echo "✅ Assets built successfully"\n\
+fi\n\
+\n\
+# Set proper permissions\n\
+echo "🔒 Setting proper file permissions..."\n\
+chown -R www-data:www-data "$CONTAINER_MOUNT_DIR"\n\
+chmod -R 755 "$CONTAINER_MOUNT_DIR"\n\
+chmod -R 775 "$CONTAINER_MOUNT_DIR/storage" "$CONTAINER_MOUNT_DIR/bootstrap/cache" 2>/dev/null || true\n\
+\n\
+echo "✅ Laravel container $PROJECT_NAME is ready!"\n\
+\n\
+exec php-fpm' > /usr/local/bin/laravel-init.sh && chmod +x /usr/local/bin/laravel-init.sh
+
+WORKDIR /var/www
+
+CMD ["/usr/local/bin/laravel-init.sh"] 

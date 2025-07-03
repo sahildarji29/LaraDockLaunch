@@ -16,16 +16,14 @@ PROXY_CONTAINER="laravel_proxy"
 NETWORK_NAME="${PROJECT_NAME}_net"
 PROXY_NETWORK="laravel_proxy_net"
 PROJECT_PATH="$LOCAL_DIR/$PROJECT_NAME"
+MASTER_IMAGE="laravel-master:latest"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-# Environment detection and domain configuration
-ENVIRONMENT=${ENVIRONMENT:-"local"}
-if [ "$ENVIRONMENT" = "production" ]; then
-    VIRTUAL_HOST="${PROJECT_NAME}.laracopilot.com"
-    DOMAIN_TYPE="production"
-else
-    VIRTUAL_HOST="${PROJECT_NAME}.loc"
-    DOMAIN_TYPE="local"
-fi
+# Domain configuration
+DOMAIN=${DOMAIN:-"loc"}  # Default domain is 'loc'
+
+# Set virtual host
+VIRTUAL_HOST="${PROJECT_NAME}.${DOMAIN}"
 
 # Function to find available port in 80-90 range
 find_available_port() {
@@ -62,8 +60,29 @@ command -v docker-compose >/dev/null 2>&1 || { echo "❌ Docker Compose is requi
 docker info >/dev/null 2>&1 || { echo "❌ Docker daemon is not running."; exit 1; }
 
 echo "📦 Initializing Laravel container for project: $PROJECT_NAME"
-echo "🌐 Environment: $DOMAIN_TYPE"
 echo "🌐 Virtual Host: $VIRTUAL_HOST"
+
+# Build master image if it doesn't exist
+build_master_image() {
+    echo "🔍 Checking for master Laravel image..."
+    
+    if ! docker images --format "{{.Repository}}:{{.Tag}}" | grep -q "^$MASTER_IMAGE$"; then
+        echo "🏗️  Master image not found. Building master Laravel 12 image with Node.js support..."
+        echo "⏳ This is a one-time process and may take a few minutes..."
+        
+        if [ -f "$SCRIPT_DIR/Dockerfile.master" ]; then
+            docker build -f "$SCRIPT_DIR/Dockerfile.master" -t "$MASTER_IMAGE" "$SCRIPT_DIR"
+            echo "✅ Master image '$MASTER_IMAGE' built successfully!"
+        else
+            echo "❌ Dockerfile.master not found in $SCRIPT_DIR"
+            exit 1
+        fi
+    else
+        echo "✅ Master image '$MASTER_IMAGE' already exists"
+    fi
+}
+
+build_master_image
 
 # Create base copilot-infra directory with www-data ownership if not exists
 if [ ! -d "$LOCAL_DIR" ]; then
@@ -80,125 +99,13 @@ sudo mkdir -p "$PROJECT_PATH"
 sudo chown www-data:www-data "$PROJECT_PATH"
 sudo chmod 755 "$PROJECT_PATH"
 
-# Check if Laravel is already installed in the project directory
-if [ -f "$PROJECT_PATH/artisan" ]; then
-    echo "✅ Laravel already exists in $PROJECT_PATH"
-else
-    echo "📦 Installing Laravel in project directory..."
-    
-    # Temporarily change ownership to current user for Laravel installation
-    CURRENT_USER=$(whoami)
-    sudo chown -R $CURRENT_USER:$CURRENT_USER "$PROJECT_PATH"
-    sudo chmod 755 "$PROJECT_PATH"
-    
-    # Install Laravel directly in the project directory using Composer
-    if command -v composer >/dev/null 2>&1; then
-        echo "🎵 Using local Composer to install Laravel..."
-        cd "$PROJECT_PATH"
-        if ! composer create-project laravel/laravel . --no-interaction; then
-            echo "❌ Laravel installation failed with local Composer"
-            cd - > /dev/null
-            sudo rm -rf "$PROJECT_PATH"
-            exit 1
-        fi
-        cd - > /dev/null
-    else
-        echo "🐳 Using Docker Composer to install Laravel..."
-        if ! docker run --rm -v "$PROJECT_PATH":/app -w /app composer:2 \
-            composer create-project laravel/laravel . --no-interaction; then
-            echo "❌ Laravel installation failed with Docker Composer"
-            sudo rm -rf "$PROJECT_PATH"
-            exit 1
-        fi
-    fi
-    
-    # Set proper ownership and permissions for all Laravel files
-    if [ -f "$PROJECT_PATH/artisan" ]; then
-        echo "🔧 Setting proper www-data ownership and permissions..."
-        sudo chown -R www-data:www-data "$PROJECT_PATH"
-        sudo chmod -R 755 "$PROJECT_PATH"
-        sudo chmod -R 775 "$PROJECT_PATH/storage" "$PROJECT_PATH/bootstrap/cache" 2>/dev/null || true
-        
-        # Create .env if it doesn't exist
-        if [ ! -f "$PROJECT_PATH/.env" ] && [ -f "$PROJECT_PATH/.env.example" ]; then
-            sudo cp "$PROJECT_PATH/.env.example" "$PROJECT_PATH/.env"
-            sudo chown www-data:www-data "$PROJECT_PATH/.env"
-            #sudo chmod 644 "$PROJECT_PATH/.env"
-        fi
-        
-        echo "✅ Laravel installed successfully in $PROJECT_PATH with www-data ownership"
-    else
-        echo "❌ Laravel installation failed"
-        exit 1
-    fi
-fi
+echo "ℹ️  Laravel will be installed automatically by the container on first run"
 
 # Create proxy network if it doesn't exist
 echo "🌐 Setting up proxy network..."
 if ! docker network inspect $PROXY_NETWORK > /dev/null 2>&1; then
     docker network create $PROXY_NETWORK
 fi
-
-# Create Dockerfile with simpler setup since Laravel is already installed
-sudo tee "$PROJECT_PATH/Dockerfile" > /dev/null <<EOF
-FROM php:8.3-fpm
-
-# Install system dependencies
-RUN apt-get update && apt-get install -y \
-    libzip-dev unzip curl git nginx supervisor && \
-    docker-php-ext-install zip pdo pdo_mysql
-
-COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
-
-# Install NVM and latest Node.js
-ENV NVM_DIR="/root/.nvm"
-ENV NODE_VERSION="node"
-
-RUN curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.0/install.sh | bash \
-    && . "\$NVM_DIR/nvm.sh" \
-    && nvm install \$NODE_VERSION \
-    && nvm use \$NODE_VERSION \
-    && nvm alias default \$NODE_VERSION \
-    && ln -sf "\$NVM_DIR/versions/node/\$(nvm version default)/bin/node" /usr/local/bin/node \
-    && ln -sf "\$NVM_DIR/versions/node/\$(nvm version default)/bin/npm" /usr/local/bin/npm \
-    && ln -sf "\$NVM_DIR/versions/node/\$(nvm version default)/bin/npx" /usr/local/bin/npx
-
-# Create a script to set up Laravel environment with Node.js support
-RUN echo '#!/bin/bash\n\
-# Display Node.js information\n\
-echo "Node.js version: \$(node --version 2>/dev/null || echo \"Not available\")"\n\
-echo "NPM version: \$(npm --version 2>/dev/null || echo \"Not available\")"\n\
-\n\
-if [ -f "/var/www/.env.example" ] && [ ! -f "/var/www/.env" ]; then\n\
-    echo "Setting up Laravel environment..."\n\
-    cd /var/www\n\
-    cp .env.example .env\n\
-    php artisan key:generate\n\
-    echo "Laravel environment setup completed."\n\
-fi\n\
-\n\
-# Install npm dependencies if package.json exists\n\
-if [ -f "/var/www/package.json" ]; then\n\
-    echo "Installing npm dependencies..."\n\
-    cd /var/www\n\
-    npm install\n\
-    echo "NPM dependencies installed."\n\
-fi\n\
-\n\
-# Set proper permissions\n\
-chown -R www-data:www-data /var/www\n\
-chmod -R 775 /var/www/storage /var/www/bootstrap/cache 2>/dev/null || true\n\
-\n\
-exec php-fpm' > /usr/local/bin/laravel-init.sh && chmod +x /usr/local/bin/laravel-init.sh
-
-WORKDIR $CONTAINER_MOUNT_DIR
-
-CMD ["/usr/local/bin/laravel-init.sh"]
-EOF
-
-# Set ownership for Dockerfile
-sudo chown www-data:www-data "$PROJECT_PATH/Dockerfile"
-sudo chmod 644 "$PROJECT_PATH/Dockerfile"
 
 # Create nginx.conf for the project
 sudo tee "$PROJECT_PATH/nginx.conf" > /dev/null <<EOF
@@ -259,19 +166,20 @@ EOF
 sudo chown www-data:www-data "$PROJECT_PATH/nginx.conf"
 sudo chmod 644 "$PROJECT_PATH/nginx.conf"
 
-# Create docker-compose.yml
+# Create docker-compose.yml using master image
 sudo tee "$PROJECT_PATH/docker-compose.yml" > /dev/null <<EOF
 services:
   app:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    image: ${MASTER_IMAGE}
     container_name: ${PHP_CONTAINER}
     volumes:
       - ./:${CONTAINER_MOUNT_DIR}
     networks:
       - ${NETWORK_NAME}
       - ${PROXY_NETWORK}
+    environment:
+      - PROJECT_NAME=${PROJECT_NAME}
+      - CONTAINER_MOUNT_DIR=${CONTAINER_MOUNT_DIR}
     healthcheck:
       test: ["CMD", "php", "-v"]
       interval: 10s
@@ -305,8 +213,8 @@ sudo chown www-data:www-data "$PROJECT_PATH/docker-compose.yml"
 sudo chmod 644 "$PROJECT_PATH/docker-compose.yml"
 
 # Start Laravel app container using Docker Compose
-echo "🚀 Starting containers..."
-docker-compose -p $PROJECT_NAME -f $PROJECT_PATH/docker-compose.yml up -d --build
+echo "🚀 Starting containers using master image..."
+docker-compose -p $PROJECT_NAME -f $PROJECT_PATH/docker-compose.yml up -d
 
 # Setup or update the reverse proxy
 echo "🔄 Setting up reverse proxy..."
@@ -436,36 +344,15 @@ echo "📝 You can now edit Laravel files directly in: $PROJECT_PATH"
 echo "🟢 Node.js and npm are available in the container for frontend development"
 echo ""
 echo "🔧 To access your application:"
-if [ "$DOMAIN_TYPE" = "production" ]; then
-    echo "   🌍 Production Environment:"
-    echo "   1. Ensure DNS points $VIRTUAL_HOST to this server"
+echo "   1. Ensure DNS points $VIRTUAL_HOST to this server"
+if [ -f /tmp/laravel_proxy_port ]; then
+    source /tmp/laravel_proxy_port
     if [ "$PROXY_PORT" = "80" ]; then
         echo "   2. Visit: http://$VIRTUAL_HOST"
-        echo "   3. For HTTPS, configure SSL certificate for $VIRTUAL_HOST"
     else
         echo "   2. Visit: http://$VIRTUAL_HOST:$PROXY_PORT"
-        echo "   3. For HTTPS, configure SSL certificate and port forwarding"
     fi
-    echo "   4. Configure your domain's DNS A record to point to this server's IP"
 else
-    echo "   🏠 Local Development Environment:"
-    echo "   1. Add this line to your /etc/hosts file:"
-    echo "      127.0.0.1 $VIRTUAL_HOST"
-    echo ""
-    if [ "$PROXY_PORT" = "80" ]; then
-        echo "   2. Then visit: http://$VIRTUAL_HOST"
-    else
-        echo "   2. Then visit: http://$VIRTUAL_HOST:$PROXY_PORT"
-    fi
+    echo "   2. Visit: http://$VIRTUAL_HOST"
 fi
-echo ""
-echo "💡 Useful commands:"
-echo "   - Edit files: Open $PROJECT_PATH in your IDE"
-echo "   - Access PHP container: docker exec -it ${PHP_CONTAINER} bash"
-echo "   - Run artisan: docker exec ${PHP_CONTAINER} php ${CONTAINER_MOUNT_DIR}/artisan <command>"
-echo "   - Run npm: docker exec ${PHP_CONTAINER} npm <command>"
-echo "   - Node.js version: docker exec ${PHP_CONTAINER} node --version"
-echo "   - Install npm deps: docker exec ${PHP_CONTAINER} npm install"
-echo "   - Build assets: docker exec ${PHP_CONTAINER} npm run build"
-echo "   - View logs: docker logs ${PHP_CONTAINER}"
-echo "   - Stop project: docker-compose -p $PROJECT_NAME -f $PROJECT_PATH/docker-compose.yml down"
+echo "   3. Configure SSL certificate for HTTPS if needed"

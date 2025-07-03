@@ -7,6 +7,7 @@ A robust shell script and Makefile system for quickly setting up Laravel project
 - **Dual Environment Support**: Deploy locally (`PROJECT.loc`) or production (`PROJECT.laracopilot.com`)
 - **Virtual Host Support**: Access projects via custom domains with automatic subdomain creation
 - **One-command Laravel setup**: Initialize a complete Laravel project with Docker containers
+- **Optimized Master Image**: Single pre-built image with Laravel 12 + Node.js for instant deployment
 - **Direct File Access**: Laravel files are accessible in the host directory for easy editing
 - **Automatic Laravel installation**: Downloads and configures Laravel directly in the project directory
 - **Node.js Support**: Latest Node.js version with NVM, npm, and npx commands available
@@ -31,6 +32,21 @@ A robust shell script and Makefile system for quickly setting up Laravel project
 - Bash shell
 - Sudo access (for managing `/etc/hosts` file and setting www-data ownership)
 
+## ⚡ Performance Optimization
+
+This system uses a **master image approach** for maximum speed and efficiency:
+
+- **Single Master Image**: Pre-built Docker image contains Laravel 12 + Node.js + all dependencies
+- **Instant Project Creation**: No build time - containers launch immediately from the master image
+- **Resource Efficient**: One image shared across all projects, saving disk space
+- **Persistent Projects**: Only containers and volumes are removed during cleanup - master image preserved
+
+### First-time Setup
+```bash
+# Build the master image (one-time setup)
+make build-master
+```
+
 ## 🚀 Quick Start
 
 ### Initialize a new Laravel project
@@ -38,13 +54,13 @@ A robust shell script and Makefile system for quickly setting up Laravel project
 **Local Development:**
 ```bash
 make init PROJECT_NAME=my-app
-# Creates: my-app.loc
+# Creates: my-app.loc (launches in ~10 seconds from master image)
 ```
 
 **Production Deployment:**
 ```bash
 make init PROJECT_NAME=api ENVIRONMENT=production
-# Creates: api.laracopilot.com subdomain
+# Creates: api.laracopilot.com subdomain (launches in ~10 seconds from master image)
 ```
 
 ### Add virtual host to your system (Local only)
@@ -66,6 +82,15 @@ make status PROJECT_NAME=my-app
 ```bash
 make clean PROJECT_NAME=my-app
 make remove-host PROJECT_NAME=my-app
+```
+
+### Master image management
+```bash
+# Build/rebuild master image (one-time setup)
+make build-master
+
+# Remove master image (affects all projects)
+make clean-master
 ```
 
 ### Get help
@@ -145,11 +170,11 @@ When you run the initialization, the following structure is created:
 ├── .env                    # Environment configuration (editable)
 ├── artisan                 # Laravel command-line tool
 ├── composer.json           # Composer dependencies (editable)
-├── Dockerfile              # PHP-FPM container configuration
-├── docker-compose.yml      # Container orchestration
+├── docker-compose.yml      # Container orchestration (uses master image)
 └── nginx.conf             # Nginx virtual host configuration
 
 Docker Resources:
+├── laravel-master:latest   # Master image (shared across all projects)
 ├── PROJECT_NAME_php        # PHP-FPM container
 ├── PROJECT_NAME_nginx      # Nginx container for the project
 ├── laravel_proxy           # Shared reverse proxy (created once)
