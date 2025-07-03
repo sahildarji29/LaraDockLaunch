@@ -123,7 +123,7 @@ else
         if [ ! -f "$PROJECT_PATH/.env" ] && [ -f "$PROJECT_PATH/.env.example" ]; then
             sudo cp "$PROJECT_PATH/.env.example" "$PROJECT_PATH/.env"
             sudo chown www-data:www-data "$PROJECT_PATH/.env"
-            sudo chmod 644 "$PROJECT_PATH/.env"
+            #sudo chmod 644 "$PROJECT_PATH/.env"
         fi
         
         echo "✅ Laravel installed successfully in $PROJECT_PATH with www-data ownership"
@@ -143,20 +143,46 @@ fi
 sudo tee "$PROJECT_PATH/Dockerfile" > /dev/null <<EOF
 FROM php:8.3-fpm
 
+# Install system dependencies
 RUN apt-get update && apt-get install -y \
     libzip-dev unzip curl git nginx supervisor && \
     docker-php-ext-install zip pdo pdo_mysql
 
 COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
 
-# Create a script to set up Laravel environment
+# Install NVM and latest Node.js
+ENV NVM_DIR="/root/.nvm"
+ENV NODE_VERSION="node"
+
+RUN curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.0/install.sh | bash \
+    && . "\$NVM_DIR/nvm.sh" \
+    && nvm install \$NODE_VERSION \
+    && nvm use \$NODE_VERSION \
+    && nvm alias default \$NODE_VERSION \
+    && ln -sf "\$NVM_DIR/versions/node/\$(nvm version default)/bin/node" /usr/local/bin/node \
+    && ln -sf "\$NVM_DIR/versions/node/\$(nvm version default)/bin/npm" /usr/local/bin/npm \
+    && ln -sf "\$NVM_DIR/versions/node/\$(nvm version default)/bin/npx" /usr/local/bin/npx
+
+# Create a script to set up Laravel environment with Node.js support
 RUN echo '#!/bin/bash\n\
+# Display Node.js information\n\
+echo "Node.js version: \$(node --version 2>/dev/null || echo \"Not available\")"\n\
+echo "NPM version: \$(npm --version 2>/dev/null || echo \"Not available\")"\n\
+\n\
 if [ -f "/var/www/.env.example" ] && [ ! -f "/var/www/.env" ]; then\n\
     echo "Setting up Laravel environment..."\n\
     cd /var/www\n\
     cp .env.example .env\n\
     php artisan key:generate\n\
     echo "Laravel environment setup completed."\n\
+fi\n\
+\n\
+# Install npm dependencies if package.json exists\n\
+if [ -f "/var/www/package.json" ]; then\n\
+    echo "Installing npm dependencies..."\n\
+    cd /var/www\n\
+    npm install\n\
+    echo "NPM dependencies installed."\n\
 fi\n\
 \n\
 # Set proper permissions\n\
@@ -348,6 +374,36 @@ echo "🔍 Verifying Laravel installation..."
 if docker exec ${PHP_CONTAINER} test -f ${CONTAINER_MOUNT_DIR}/artisan; then
     echo "✅ Laravel artisan found"
     
+    # Setup Laravel environment
+    echo "🔧 Setting up Laravel environment..."
+    
+    # Ensure .env file exists
+    if ! docker exec ${PHP_CONTAINER} test -f ${CONTAINER_MOUNT_DIR}/.env; then
+        echo "📄 Creating .env file from .env.example..."
+        docker exec ${PHP_CONTAINER} cp ${CONTAINER_MOUNT_DIR}/.env.example ${CONTAINER_MOUNT_DIR}/.env
+    fi
+    
+    # Generate application key
+    echo "🔑 Generating Laravel application key..."
+    if docker exec ${PHP_CONTAINER} php ${CONTAINER_MOUNT_DIR}/artisan key:generate --force; then
+        echo "✅ Application key generated successfully"
+    else
+        echo "⚠️  Failed to generate application key"
+    fi
+    
+    # Run database migrations
+    echo "🗃️  Running database migrations..."
+    if docker exec ${PHP_CONTAINER} php ${CONTAINER_MOUNT_DIR}/artisan migrate --force; then
+        echo "✅ Database migrations completed successfully"
+    else
+        echo "⚠️  Database migrations failed (this is normal if no database is configured)"
+    fi
+    
+    # Set proper permissions
+    echo "🔒 Setting proper file permissions..."
+    docker exec ${PHP_CONTAINER} chown -R www-data:www-data ${CONTAINER_MOUNT_DIR}
+    docker exec ${PHP_CONTAINER} chmod -R 775 ${CONTAINER_MOUNT_DIR}/storage ${CONTAINER_MOUNT_DIR}/bootstrap/cache 2>/dev/null || true
+    
     # Check if we can run artisan commands
     if docker exec ${PHP_CONTAINER} php ${CONTAINER_MOUNT_DIR}/artisan --version > /dev/null 2>&1; then
         echo "✅ Laravel is working properly"
@@ -377,6 +433,7 @@ echo "🚀 Proxy Port: $PROXY_PORT"
 echo "📁 Project files are accessible at: $PROJECT_PATH"
 echo "👤 Files owned by: www-data:www-data"
 echo "📝 You can now edit Laravel files directly in: $PROJECT_PATH"
+echo "🟢 Node.js and npm are available in the container for frontend development"
 echo ""
 echo "🔧 To access your application:"
 if [ "$DOMAIN_TYPE" = "production" ]; then
@@ -406,5 +463,9 @@ echo "💡 Useful commands:"
 echo "   - Edit files: Open $PROJECT_PATH in your IDE"
 echo "   - Access PHP container: docker exec -it ${PHP_CONTAINER} bash"
 echo "   - Run artisan: docker exec ${PHP_CONTAINER} php ${CONTAINER_MOUNT_DIR}/artisan <command>"
+echo "   - Run npm: docker exec ${PHP_CONTAINER} npm <command>"
+echo "   - Node.js version: docker exec ${PHP_CONTAINER} node --version"
+echo "   - Install npm deps: docker exec ${PHP_CONTAINER} npm install"
+echo "   - Build assets: docker exec ${PHP_CONTAINER} npm run build"
 echo "   - View logs: docker logs ${PHP_CONTAINER}"
 echo "   - Stop project: docker-compose -p $PROJECT_NAME -f $PROJECT_PATH/docker-compose.yml down"

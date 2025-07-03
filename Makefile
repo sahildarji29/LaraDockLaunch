@@ -38,6 +38,7 @@ help: ## Show this help message
 	@echo "  1. Laravel files will be in /var/www/copilot-infra/<PROJECT_NAME> for editing"
 	@echo "  2. Files will be owned by www-data for web server compatibility"
 	@echo "  3. Add this to your /etc/hosts file: 127.0.0.1 <PROJECT_NAME>.loc"
+	@echo "  4. Node.js and npm commands are available in the container"
 	@echo ""
 	@echo "Available targets:"
 	@awk 'BEGIN {FS = ":.*?## "} /^[a-zA-Z_-]+:.*?## / {printf "  %-15s %s\n", $$1, $$2}' $(MAKEFILE_LIST)

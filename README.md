@@ -9,6 +9,7 @@ A robust shell script and Makefile system for quickly setting up Laravel project
 - **One-command Laravel setup**: Initialize a complete Laravel project with Docker containers
 - **Direct File Access**: Laravel files are accessible in the host directory for easy editing
 - **Automatic Laravel installation**: Downloads and configures Laravel directly in the project directory
+- **Node.js Support**: Latest Node.js version with NVM, npm, and npx commands available
 - **Smart Port Detection**: Automatically finds available ports in 80-90 range to avoid conflicts
 - **Proper Ownership**: All projects created with www-data ownership for web server compatibility
 - **Production Ready**: Enhanced nginx config with security headers and performance optimizations
@@ -20,6 +21,7 @@ A robust shell script and Makefile system for quickly setting up Laravel project
 - **Project management**: Easy cleanup and status checking for projects
 - **Dependency validation**: Checks for Docker and Docker Compose before starting
 - **IDE Integration**: Edit Laravel files directly with your favorite IDE/editor
+- **Frontend Asset Support**: Automatic npm dependency installation and Vite development support
 
 ## 🔧 Prerequisites
 
@@ -244,10 +246,62 @@ docker exec my-app_php php /var/www/artisan cache:clear
 docker exec my-app_php composer require laravel/sanctum
 ```
 
+### Node.js and NPM Commands
+Run Node.js and npm commands through the container:
+
+```bash
+# Check Node.js and npm versions
+docker exec my-app_php node --version
+docker exec my-app_php npm --version
+
+# Install npm dependencies
+docker exec my-app_php npm install
+
+# Install specific packages
+docker exec my-app_php npm install axios
+docker exec my-app_php npm install --save-dev vite
+
+# Run npm scripts
+docker exec my-app_php npm run dev
+docker exec my-app_php npm run build
+docker exec my-app_php npm run watch
+
+# Use npx commands
+docker exec my-app_php npx vite --version
+
+# Install Laravel frontend scaffolding
+docker exec my-app_php php /var/www/artisan breeze:install
+docker exec my-app_php npm install && npm run build
+```
+
 ### Real-time Development
 - **Instant Changes**: File modifications are immediately reflected in the running application
 - **No Rebuilds**: No need to rebuild containers when editing code
 - **IDE Support**: Full IDE/editor support with syntax highlighting, debugging, etc.
+
+### Frontend Development with Node.js
+With the integrated Node.js support, you can build modern Laravel applications with Vite:
+
+```bash
+# Setup Laravel with Vite (automatically included in new Laravel projects)
+docker exec my-app_php npm install
+
+# Development with hot reloading
+docker exec my-app_php npm run dev
+
+# Build for production
+docker exec my-app_php npm run build
+
+# Install Laravel Breeze for authentication scaffolding
+docker exec my-app_php php /var/www/artisan breeze:install
+docker exec my-app_php npm install && npm run dev
+
+# Add additional frontend packages
+docker exec my-app_php npm install alpinejs
+docker exec my-app_php npm install --save-dev tailwindcss
+```
+
+**Note**: Laravel's default Vite configuration will work out of the box. Your compiled assets will be available through the web server automatically.
 - **Version Control**: Git works normally in the project directory
 
 ### Quick Test Example
