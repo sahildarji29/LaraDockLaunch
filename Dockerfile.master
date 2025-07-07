@@ -1,111 +1,116 @@
-FROM php:8.3-fpm
+FROM php:8.3-fpm-alpine
 
-# Laravel 12 Master Image with Node.js Support
+# High-Scale Laravel Master Image with Node.js Support
+# Optimized for 300-400 containers on single instance
 # This image contains Laravel 12 + Node.js + all dependencies for instant project deployment
 
-# Install system dependencies
-RUN apt-get update && apt-get install -y \
-    libzip-dev unzip curl git nginx supervisor && \
-    docker-php-ext-install zip pdo pdo_mysql && \
-    rm -rf /var/lib/apt/lists/*
+# Install system dependencies with minimal packages
+RUN apk add --no-cache --update \
+    libzip-dev \
+    unzip \
+    curl \
+    git \
+    bash \
+    supervisor \
+    && docker-php-ext-configure zip \
+    && docker-php-ext-install zip pdo pdo_mysql \
+    && rm -rf /var/cache/apk/*
 
+# Install Composer
 COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
 
-# Install NVM and latest Node.js
-ENV NVM_DIR="/root/.nvm"
-ENV NODE_VERSION="node"
+# Install NVM and latest Node.js with minimal footprint
+ENV NODE_VERSION="20.10.0"
 
-RUN curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.0/install.sh | bash \
-    && . "$NVM_DIR/nvm.sh" \
-    && nvm install $NODE_VERSION \
-    && nvm use $NODE_VERSION \
-    && nvm alias default $NODE_VERSION \
-    && ln -sf "$NVM_DIR/versions/node/$(nvm version default)/bin/node" /usr/local/bin/node \
-    && ln -sf "$NVM_DIR/versions/node/$(nvm version default)/bin/npm" /usr/local/bin/npm \
-    && ln -sf "$NVM_DIR/versions/node/$(nvm version default)/bin/npx" /usr/local/bin/npx
+RUN apk add --no-cache nodejs npm su-exec shadow && \
+    npm cache clean --force
 
 # Install Laravel globally for faster project creation (Laravel 12)
-RUN composer global require laravel/installer
+RUN composer global require laravel/installer --optimize-autoloader
 
 # Add Composer global bin to PATH
 ENV PATH="$PATH:/root/.composer/vendor/bin"
 
-# Create a temporary Laravel installation to build assets
-RUN cd /tmp && \
-    composer create-project laravel/laravel temp-laravel --prefer-dist && \
-    cd temp-laravel && \
-    npm install && \
-    npm run build && \
-    cp -r public/build /root/default-build && \
-    rm -rf /tmp/temp-laravel
+# PHP Configuration optimizations for high-scale deployment
+RUN { \
+    echo 'memory_limit = 256M'; \
+    echo 'max_execution_time = 300'; \
+    echo 'max_input_time = 300'; \
+    echo 'post_max_size = 100M'; \
+    echo 'upload_max_filesize = 100M'; \
+    echo 'max_file_uploads = 20'; \
+    echo 'opcache.enable = 1'; \
+    echo 'opcache.enable_cli = 1'; \
+    echo 'opcache.memory_consumption = 128'; \
+    echo 'opcache.interned_strings_buffer = 8'; \
+    echo 'opcache.max_accelerated_files = 10000'; \
+    echo 'opcache.revalidate_freq = 2'; \
+    echo 'opcache.fast_shutdown = 1'; \
+    echo 'realpath_cache_size = 4096K'; \
+    echo 'realpath_cache_ttl = 600'; \
+    } > /usr/local/etc/php/conf.d/docker-php-optimizations.ini
 
-# Create a dynamic initialization script
-RUN echo '#!/bin/bash\n\
-PROJECT_NAME=${PROJECT_NAME:-laravel-app}\n\
-CONTAINER_MOUNT_DIR=${CONTAINER_MOUNT_DIR:-/var/www}\n\
+# Configure PHP-FPM for high-scale deployment
+RUN { \
+    echo '[global]'; \
+    echo 'error_log = /dev/null'; \
+    echo 'daemonize = no'; \
+    echo ''; \
+    echo '[www]'; \
+    echo 'user = laraveluser'; \
+    echo 'group = laraveluser'; \
+    echo 'listen = 9000'; \
+    echo 'listen.owner = laraveluser'; \
+    echo 'listen.group = laraveluser'; \
+    echo 'listen.mode = 0660'; \
+    echo 'pm = dynamic'; \
+    echo 'pm.max_children = 10'; \
+    echo 'pm.start_servers = 2'; \
+    echo 'pm.min_spare_servers = 1'; \
+    echo 'pm.max_spare_servers = 3'; \
+    echo 'pm.max_requests = 500'; \
+    echo 'clear_env = no'; \
+    echo 'catch_workers_output = yes'; \
+    echo 'decorate_workers_output = no'; \
+    echo 'access.log = /dev/null'; \
+    echo 'slowlog = /dev/null'; \
+    echo 'php_admin_value[error_log] = /dev/null'; \
+    echo 'php_admin_flag[log_errors] = off'; \
+} > /usr/local/etc/php-fpm.conf
+
+# Create a dynamic initialization script optimized for high-scale
+COPY laravel-init.sh /usr/local/bin/laravel-init.sh
+RUN chmod +x /usr/local/bin/laravel-init.sh
+
+# Create healthcheck script
+RUN printf '#!/bin/bash\n\
+if ! pgrep -f "php-fpm: master process" > /dev/null; then\n\
+    exit 1\n\
+fi\n\
 \n\
-echo "🚀 Starting Laravel container: $PROJECT_NAME"\n\
-echo "📁 Mount directory: $CONTAINER_MOUNT_DIR"\n\
+if ! php -v > /dev/null 2>&1; then\n\
+    exit 1\n\
+fi\n\
 \n\
-# Display Node.js information\n\
-echo "🟢 Node.js version: $(node --version 2>/dev/null || echo \"Not available\")"\n\
-echo "📦 NPM version: $(npm --version 2>/dev/null || echo \"Not available\")"\n\
-\n\
-# Check if Laravel project exists, if not create it\n\
-if [ ! -f "$CONTAINER_MOUNT_DIR/artisan" ]; then\n\
-    echo "📦 Creating new Laravel 12 project in $CONTAINER_MOUNT_DIR..."\n\
-    cd /tmp\n\
-    composer create-project laravel/laravel laravel-temp --prefer-dist\n\
-    cp -r laravel-temp/* "$CONTAINER_MOUNT_DIR/"\n\
-    cp laravel-temp/.env.example "$CONTAINER_MOUNT_DIR/" 2>/dev/null || true\n\
-    cp laravel-temp/.gitignore "$CONTAINER_MOUNT_DIR/" 2>/dev/null || true\n\
-    rm -rf laravel-temp\n\
-    cd "$CONTAINER_MOUNT_DIR"\n\
-    echo "✅ Laravel 12 project created successfully"\n\
-    \n\
-    # Copy pre-built assets if they exist\n\
-    if [ -d "/root/default-build" ]; then\n\
-        echo "📦 Copying pre-built assets..."\n\
-        mkdir -p "$CONTAINER_MOUNT_DIR/public/build"\n\
-        cp -r /root/default-build/* "$CONTAINER_MOUNT_DIR/public/build/"\n\
-        echo "✅ Pre-built assets copied successfully"\n\
+if [ -f "/var/www/artisan" ]; then\n\
+    if ! php /var/www/artisan --version > /dev/null 2>&1; then\n\
+        exit 1\n\
     fi\n\
-else\n\
-    echo "✅ Laravel project already exists"\n\
-    cd "$CONTAINER_MOUNT_DIR"\n\
 fi\n\
 \n\
-# Setup Laravel environment\n\
-if [ -f ".env.example" ] && [ ! -f ".env" ]; then\n\
-    echo "📄 Setting up .env file..."\n\
-    cp .env.example .env\n\
-fi\n\
-\n\
-# Generate application key if not exists\n\
-if ! grep -q "APP_KEY=base64:" .env 2>/dev/null; then\n\
-    echo "🔑 Generating Laravel application key..."\n\
-    php artisan key:generate --force\n\
-fi\n\
-\n\
-# Install npm dependencies if package.json exists and build directory doesnt exist\n\
-if [ -f "package.json" ] && [ ! -d "public/build" ]; then\n\
-    echo "📦 Installing npm dependencies..."\n\
-    npm install\n\
-    echo "🏗️ Building assets..."\n\
-    npm run build\n\
-    echo "✅ Assets built successfully"\n\
-fi\n\
-\n\
-# Set proper permissions\n\
-echo "🔒 Setting proper file permissions..."\n\
-chown -R www-data:www-data "$CONTAINER_MOUNT_DIR"\n\
-chmod -R 755 "$CONTAINER_MOUNT_DIR"\n\
-chmod -R 775 "$CONTAINER_MOUNT_DIR/storage" "$CONTAINER_MOUNT_DIR/bootstrap/cache" 2>/dev/null || true\n\
-\n\
-echo "✅ Laravel container $PROJECT_NAME is ready!"\n\
-\n\
-exec php-fpm' > /usr/local/bin/laravel-init.sh && chmod +x /usr/local/bin/laravel-init.sh
+exit 0' > /usr/local/bin/healthcheck.sh && chmod +x /usr/local/bin/healthcheck.sh
 
 WORKDIR /var/www
 
-CMD ["/usr/local/bin/laravel-init.sh"] 
+# Health check for high-scale deployment
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
+    CMD /usr/local/bin/healthcheck.sh
+
+# Resource limits and optimizations
+ENV PHP_MEMORY_LIMIT=256M
+ENV PHP_MAX_EXECUTION_TIME=300
+ENV FPM_MAX_CHILDREN=10
+ENV FPM_MAX_REQUESTS=500
+
+# Set the entrypoint to our initialization script
+ENTRYPOINT ["/usr/local/bin/laravel-init.sh"]
