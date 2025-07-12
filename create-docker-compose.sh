@@ -24,8 +24,6 @@ echo "🐳 Creating Docker Compose configuration for $PROJECT_NAME..."
 
 # Create docker-compose.yml for individual PHP-FPM container with production-ready settings
 tee "$PROJECT_PATH/docker-compose.yml" > /dev/null <<EOF
-version: '3.8'
-
 services:
   app:
     image: ${MASTER_IMAGE}
@@ -40,7 +38,6 @@ services:
           cpus: '0.5'
         reservations:
           memory: 128M
-          cpus: '0.25'
     
     # Security settings
     security_opt:
