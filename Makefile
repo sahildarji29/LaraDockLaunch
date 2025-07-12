@@ -174,6 +174,7 @@ add-host: ## Add virtual host entry to /etc/hosts file
 			echo "💡 Try running: sudo make add-host PROJECT_NAME=$(PROJECT_NAME)"; \
 			echo "💡 Or manually add this line to /etc/hosts:"; \
 			echo "   127.0.0.1 $(PROJECT_NAME).$$DOMAIN"; \
+			echo "💡 Or use: echo '127.0.0.1 $(PROJECT_NAME).$$DOMAIN' | sudo tee -a /etc/hosts"; \
 		fi; \
 	else \
 		echo "✅ Host entry already exists"; \
@@ -198,6 +199,7 @@ remove-host: ## Remove virtual host entry from /etc/hosts file
 		echo "💡 Try running: sudo make remove-host PROJECT_NAME=$(PROJECT_NAME)"; \
 		echo "💡 Or manually remove this line from /etc/hosts:"; \
 		echo "   127.0.0.1 $(PROJECT_NAME).$$DOMAIN"; \
+		echo "💡 Or use: sudo sed -i '/127.0.0.1[[:space:]]$(PROJECT_NAME).$$DOMAIN/d' /etc/hosts"; \
 	fi
 
 hosts: ## Show all Laravel virtual host entries in /etc/hosts file

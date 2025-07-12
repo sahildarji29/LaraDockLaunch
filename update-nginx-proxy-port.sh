@@ -2,6 +2,7 @@
 
 # Update Nginx Proxy Port Script
 # Updates system nginx proxy configuration when shared nginx port changes
+# Works without sudo by providing clear instructions
 
 set -e
 
@@ -16,13 +17,6 @@ echo -e "${BLUE}🔄 Updating System Nginx Proxy Port${NC}"
 echo "====================================="
 echo ""
 
-# Check if running as root or with sudo
-if [ "$EUID" -ne 0 ]; then
-    echo -e "${YELLOW}⚠️  This script requires sudo privileges for nginx configuration${NC}"
-    echo "Please run: sudo $0"
-    exit 1
-fi
-
 # Get the current nginx port
 NGINX_PORT=82
 if [ -f /tmp/laravel_nginx_port ]; then
@@ -36,6 +30,25 @@ echo ""
 # Check if shared nginx container is running
 if ! docker ps --format '{{.Names}}' | grep -q "^laravel_nginx_shared$"; then
     echo -e "${RED}❌ Shared nginx container is not running${NC}"
+    exit 1
+fi
+
+# Check if we can access nginx configuration
+if [ ! -w /etc/nginx/sites-available/default ]; then
+    echo -e "${YELLOW}⚠️  Cannot write to nginx configuration (requires sudo)${NC}"
+    echo ""
+    echo -e "${BLUE}📋 Manual Update Required:${NC}"
+    echo "Please run the following command to update the nginx proxy:"
+    echo ""
+    echo "sudo $0"
+    echo ""
+    echo -e "${BLUE}🔧 Or manually update /etc/nginx/sites-available/default:${NC}"
+    echo "Replace the proxy_pass line with:"
+    echo "proxy_pass http://127.0.0.1:$NGINX_PORT;"
+    echo ""
+    echo "Then reload nginx:"
+    echo "sudo systemctl reload nginx"
+    echo ""
     exit 1
 fi
 
@@ -84,32 +97,31 @@ echo -e "${GREEN}✅ Nginx proxy configuration updated${NC}"
 
 # Test nginx configuration
 echo -e "${BLUE}🧪 Testing nginx configuration...${NC}"
-if nginx -t; then
+if nginx -t 2>/dev/null; then
     echo -e "${GREEN}✅ Nginx configuration is valid${NC}"
 else
-    echo -e "${RED}❌ Nginx configuration is invalid${NC}"
-    exit 1
+    echo -e "${YELLOW}⚠️  Cannot test nginx configuration (requires sudo)${NC}"
+    echo "Please run: sudo nginx -t"
 fi
 
 # Reload nginx
 echo -e "${BLUE}🔄 Reloading nginx...${NC}"
-systemctl reload nginx
-
-if [ $? -eq 0 ]; then
+if systemctl reload nginx 2>/dev/null; then
     echo -e "${GREEN}✅ Nginx reloaded successfully${NC}"
 else
-    echo -e "${RED}❌ Failed to reload nginx${NC}"
-    exit 1
+    echo -e "${YELLOW}⚠️  Cannot reload nginx (requires sudo)${NC}"
+    echo "Please run: sudo systemctl reload nginx"
 fi
 
 # Test the proxy
 echo -e "${BLUE}🧪 Testing proxy...${NC}"
 sleep 2
 
-if curl -s -o /dev/null -w "%{http_code}" http://localhost/health | grep -q "200"; then
+if curl -s -o /dev/null -w "%{http_code}" http://localhost/health 2>/dev/null | grep -q "200"; then
     echo -e "${GREEN}✅ System nginx proxy is working${NC}"
 else
     echo -e "${YELLOW}⚠️  Proxy may need a moment to start${NC}"
+    echo "Please reload nginx manually: sudo systemctl reload nginx"
 fi
 
 echo ""

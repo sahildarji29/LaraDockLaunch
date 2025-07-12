@@ -209,7 +209,7 @@ main() {
         # Check if system nginx is already configured as proxy
         if ! grep -q "proxy_pass http://127.0.0.1:" /etc/nginx/sites-available/default 2>/dev/null; then
             echo "🔧 Configuring system nginx as reverse proxy..."
-            sudo "$SCRIPT_DIR/setup-system-nginx-proxy.sh"
+            "$SCRIPT_DIR/setup-system-nginx-proxy.sh"
         else
             echo "✅ System nginx proxy already configured"
         fi
@@ -220,10 +220,11 @@ main() {
     # Step 8.6: Always update system nginx proxy to match current shared nginx port
     if [ -f "$SCRIPT_DIR/update-nginx-proxy-port.sh" ]; then
         echo "🔄 Ensuring system nginx proxy is up to date with shared nginx port..."
-        if sudo "$SCRIPT_DIR/update-nginx-proxy-port.sh"; then
+        if "$SCRIPT_DIR/update-nginx-proxy-port.sh"; then
             echo "✅ System nginx proxy updated for current shared nginx port"
         else
-            echo "❌ Failed to update system nginx proxy. Please run: sudo $SCRIPT_DIR/update-nginx-proxy-port.sh"
+            echo "⚠️  System nginx proxy update may require manual intervention"
+            echo "💡 If needed, run: sudo $SCRIPT_DIR/update-nginx-proxy-port.sh"
         fi
     else
         echo "⚠️  update-nginx-proxy-port.sh not found, skipping proxy update"
