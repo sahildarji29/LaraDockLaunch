@@ -166,8 +166,14 @@ add-host: ## Add virtual host entry to /etc/hosts file
 	fi; \
 	if ! grep -q "127.0.0.1[[:space:]]$(PROJECT_NAME).$$DOMAIN" /etc/hosts; then \
 		echo "🔧 Adding host entry for $(PROJECT_NAME).$$DOMAIN"; \
-		echo "127.0.0.1 $(PROJECT_NAME).$$DOMAIN" | sudo tee -a /etc/hosts > /dev/null; \
-		echo "✅ Host entry added successfully"; \
+		if echo "127.0.0.1 $(PROJECT_NAME).$$DOMAIN" >> /etc/hosts 2>/dev/null; then \
+			echo "✅ Host entry added successfully"; \
+		else \
+			echo "❌ Failed to add host entry - permission denied"; \
+			echo "💡 Try running: sudo make add-host PROJECT_NAME=$(PROJECT_NAME)"; \
+			echo "💡 Or manually add this line to /etc/hosts:"; \
+			echo "   127.0.0.1 $(PROJECT_NAME).$$DOMAIN"; \
+		fi; \
 	else \
 		echo "✅ Host entry already exists"; \
 	fi
@@ -184,8 +190,14 @@ remove-host: ## Remove virtual host entry from /etc/hosts file
 		DOMAIN="$(DOMAIN)"; \
 	fi; \
 	echo "🔧 Removing host entry for $(PROJECT_NAME).$$DOMAIN"; \
-	sudo sed -i "/127.0.0.1[[:space:]]$(PROJECT_NAME).$$DOMAIN/d" /etc/hosts; \
-	echo "✅ Host entry removed successfully"
+	if sed -i "/127.0.0.1[[:space:]]$(PROJECT_NAME).$$DOMAIN/d" /etc/hosts 2>/dev/null; then \
+		echo "✅ Host entry removed successfully"; \
+	else \
+		echo "❌ Failed to remove host entry - permission denied"; \
+		echo "💡 Try running: sudo make remove-host PROJECT_NAME=$(PROJECT_NAME)"; \
+		echo "💡 Or manually remove this line from /etc/hosts:"; \
+		echo "   127.0.0.1 $(PROJECT_NAME).$$DOMAIN"; \
+	fi
 
 hosts: ## Show all Laravel virtual host entries in /etc/hosts file
 	@echo "📋 Current Laravel virtual host entries:"

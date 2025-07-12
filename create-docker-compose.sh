@@ -23,7 +23,7 @@ fi
 echo "🐳 Creating Docker Compose configuration for $PROJECT_NAME..."
 
 # Create docker-compose.yml for individual PHP-FPM container with production-ready settings
-sudo tee "$PROJECT_PATH/docker-compose.yml" > /dev/null <<EOF
+tee "$PROJECT_PATH/docker-compose.yml" > /dev/null <<EOF
 version: '3.8'
 
 services:
@@ -115,9 +115,5 @@ networks:
   ${SHARED_NETWORK}:
     external: true
 EOF
-
-# Set ownership for docker-compose.yml
-sudo chown www-data:www-data "$PROJECT_PATH/docker-compose.yml"
-sudo chmod 644 "$PROJECT_PATH/docker-compose.yml"
 
 echo "✅ Docker Compose configuration created: $PROJECT_PATH/docker-compose.yml" 

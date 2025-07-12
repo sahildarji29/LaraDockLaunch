@@ -33,10 +33,10 @@ fi
 echo "🌐 Creating nginx configuration for $VIRTUAL_HOST..."
 
 # Create nginx configuration directory if it doesn't exist
-sudo mkdir -p "$NGINX_CONFIG_DIR"
+mkdir -p "$NGINX_CONFIG_DIR"
 
 # Create nginx configuration file
-sudo tee "$NGINX_CONFIG_DIR/${PROJECT_NAME}.conf" > /dev/null << EOF
+tee "$NGINX_CONFIG_DIR/${PROJECT_NAME}.conf" > /dev/null << EOF
 server {
     listen 80;
     index index.php index.html;

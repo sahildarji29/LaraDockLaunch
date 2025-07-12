@@ -50,8 +50,8 @@ NGINX_PORT=$(find_available_port)
 echo "📦 Creating shared nginx container on port $NGINX_PORT..."
 
 # Create nginx main configuration in a separate directory
-sudo mkdir -p "$NGINX_CONFIG_DIR/main"
-sudo tee "$NGINX_CONFIG_DIR/main/nginx.conf" > /dev/null <<EOF
+mkdir -p "$NGINX_CONFIG_DIR/main"
+tee "$NGINX_CONFIG_DIR/main/nginx.conf" > /dev/null <<EOF
 user nginx;
 worker_processes auto;
 pid /run/nginx.pid;

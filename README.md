@@ -99,13 +99,25 @@ init-laravel-container.sh
 
 ## 🚀 Quick Start
 
-### 1. Build Master Image
+### 1. Setup User Permissions
+```bash
+# Add your user to the docker group (one-time setup)
+sudo usermod -aG docker $USER
+
+# Log out and log back in, or run:
+newgrp docker
+
+# Verify Docker works without sudo
+docker ps
+```
+
+### 2. Build Master Image
 ```bash
 # Build optimized master image (one-time setup)
 make build-master
 ```
 
-### 2. Deploy Containers
+### 3. Deploy Containers
 ```bash
 # Deploy individual projects
 make init PROJECT_NAME=api DOMAIN=com
@@ -118,7 +130,7 @@ make add-host PROJECT_NAME=blog DOMAIN=test
 make add-host PROJECT_NAME=shop DOMAIN=loc
 ```
 
-### 3. Monitor and Manage
+### 4. Monitor and Manage
 ```bash
 # Check container status
 docker ps
@@ -235,6 +247,18 @@ sudo apt install certbot python3-certbot-nginx
 sudo certbot --nginx -d api.yourdomain.com
 ```
 
+### User Permissions Setup
+```bash
+# Add user to docker group (required for non-sudo Docker usage)
+sudo usermod -aG docker $USER
+
+# Log out and log back in, or run:
+newgrp docker
+
+# Verify Docker works without sudo
+docker ps
+```
+
 ### System Requirements
 - **CPU**: 64+ cores recommended
 - **RAM**: 128GB+ recommended
@@ -340,8 +364,8 @@ nslookup <domain>
 # Check file permissions
 ls -la /var/www/copilot-infra/<project_name>/
 
-# Fix permissions if needed
-sudo chown -R www-data:www-data /var/www/copilot-infra/<project_name>/
+# Fix permissions if needed (containers handle this automatically)
+# Files are accessible directly in /var/www/copilot-infra/<project_name>/
 
 # Check disk space
 df -h

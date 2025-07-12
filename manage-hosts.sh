@@ -20,6 +20,11 @@ show_help() {
     echo "  $0 add myapp           # Adds: 127.0.0.1 myapp.loc"
     echo "  $0 remove myapp        # Removes the myapp.loc entry"
     echo "  $0 list                # Shows all .loc entries"
+    echo ""
+    echo "Note: This script requires write permissions to /etc/hosts"
+    echo "If you get permission denied, you may need to:"
+    echo "  1. Run with sudo: sudo $0 <command> <project_name>"
+    echo "  2. Or manually edit /etc/hosts file"
 }
 
 add_host() {
@@ -39,13 +44,14 @@ add_host() {
     fi
     
     # Add entry
-    echo "127.0.0.1 ${virtual_host}" | sudo tee -a "$HOSTS_FILE" > /dev/null
-    
-    if [ $? -eq 0 ]; then
+    if echo "127.0.0.1 ${virtual_host}" >> "$HOSTS_FILE" 2>/dev/null; then
         echo "✅ Added virtual host: ${virtual_host}"
         echo "🌐 You can now access your project at: http://${virtual_host}"
     else
-        echo "❌ Failed to add virtual host entry"
+        echo "❌ Failed to add virtual host entry - permission denied"
+        echo "💡 Try running: sudo $0 add $project_name"
+        echo "💡 Or manually add this line to /etc/hosts:"
+        echo "   127.0.0.1 ${virtual_host}"
         exit 1
     fi
 }
@@ -67,12 +73,13 @@ remove_host() {
     fi
     
     # Remove entry
-    sudo sed -i "/127\.0\.0\.1.*${virtual_host}/d" "$HOSTS_FILE"
-    
-    if [ $? -eq 0 ]; then
+    if sed -i "/127\.0\.0\.1.*${virtual_host}/d" "$HOSTS_FILE" 2>/dev/null; then
         echo "✅ Removed virtual host: ${virtual_host}"
     else
-        echo "❌ Failed to remove virtual host entry"
+        echo "❌ Failed to remove virtual host entry - permission denied"
+        echo "💡 Try running: sudo $0 remove $project_name"
+        echo "💡 Or manually remove this line from /etc/hosts:"
+        echo "   127.0.0.1 ${virtual_host}"
         exit 1
     fi
 }

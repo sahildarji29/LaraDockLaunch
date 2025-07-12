@@ -61,6 +61,14 @@ command -v docker-compose >/dev/null 2>&1 || { echo "❌ Docker Compose is requi
 # Check if Docker daemon is running
 docker info >/dev/null 2>&1 || { echo "❌ Docker daemon is not running."; exit 1; }
 
+# Check if user is in docker group
+if ! groups | grep -q docker; then
+    echo "❌ Current user is not in the docker group. Please run:"
+    echo "   sudo usermod -aG docker $USER"
+    echo "   Then log out and log back in, or run: newgrp docker"
+    exit 1
+fi
+
 echo "📦 Initializing Laravel container for project: $PROJECT_NAME"
 echo "🌐 Virtual Host: $VIRTUAL_HOST"
 echo "🏗️  High-Scale Architecture: Shared Nginx + Individual PHP-FPM"
@@ -89,29 +97,23 @@ build_master_image() {
 setup_base_directories() {
     echo "🏗️  Setting up base directories..."
     
-    # Create base copilot-infra directory with www-data ownership if not exists
+    # Create base copilot-infra directory if not exists
     if [ ! -d "$LOCAL_DIR" ]; then
         echo "🏗️  Creating base directory: $LOCAL_DIR"
-        sudo mkdir -p "$LOCAL_DIR"
-        sudo chown www-data:www-data "$LOCAL_DIR"
-        sudo chmod 755 "$LOCAL_DIR"
-        echo "✅ Base directory created with www-data ownership"
+        mkdir -p "$LOCAL_DIR"
+        echo "✅ Base directory created"
     fi
 
     # Create nginx configs directory if not exists
     if [ ! -d "$NGINX_CONFIG_DIR" ]; then
         echo "🏗️  Creating nginx configs directory: $NGINX_CONFIG_DIR"
-        sudo mkdir -p "$NGINX_CONFIG_DIR"
-        sudo chown www-data:www-data "$NGINX_CONFIG_DIR"
-        sudo chmod 755 "$NGINX_CONFIG_DIR"
+        mkdir -p "$NGINX_CONFIG_DIR"
         echo "✅ Nginx configs directory created"
     fi
 
     # Create project directory if not exists
     echo "📁 Creating project directory: $PROJECT_PATH"
-    sudo mkdir -p "$PROJECT_PATH"
-    sudo chown www-data:www-data "$PROJECT_PATH"
-    sudo chmod 755 "$PROJECT_PATH"
+    mkdir -p "$PROJECT_PATH"
 
     echo "ℹ️  Laravel will be installed automatically by the container on first run"
 }
