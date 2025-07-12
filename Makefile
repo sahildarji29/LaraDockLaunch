@@ -105,6 +105,7 @@ status: ## Show status of Laravel containers
 		if [ -n "$$NGINX_PORT" ]; then \
 			echo "✅ Shared nginx running on port $$NGINX_PORT"; \
 			echo "🔗 Access URL: http://$(PROJECT_NAME).$$DOMAIN:$$NGINX_PORT"; \
+			echo "💡 Note: You can access without port by adding hosts entry"; \
 		else \
 			echo "✅ Running (port unknown)"; \
 		fi; \

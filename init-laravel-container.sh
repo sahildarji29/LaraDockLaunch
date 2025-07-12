@@ -203,6 +203,32 @@ main() {
     echo "🌐 Setting up shared nginx container..."
     "$SCRIPT_DIR/setup-shared-nginx.sh" "$SHARED_NGINX_CONTAINER" "$NGINX_CONFIG_DIR" "$SHARED_NETWORK"
     
+    # Step 8.5: Setup system nginx proxy (if not already configured)
+    echo "🌐 Setting up system nginx proxy..."
+    if [ -f "$SCRIPT_DIR/setup-system-nginx-proxy.sh" ]; then
+        # Check if system nginx is already configured as proxy
+        if ! grep -q "proxy_pass http://127.0.0.1:" /etc/nginx/sites-available/default 2>/dev/null; then
+            echo "🔧 Configuring system nginx as reverse proxy..."
+            sudo "$SCRIPT_DIR/setup-system-nginx-proxy.sh"
+        else
+            echo "✅ System nginx proxy already configured"
+        fi
+    else
+        echo "⚠️  System nginx proxy script not found, skipping"
+    fi
+
+    # Step 8.6: Always update system nginx proxy to match current shared nginx port
+    if [ -f "$SCRIPT_DIR/update-nginx-proxy-port.sh" ]; then
+        echo "🔄 Ensuring system nginx proxy is up to date with shared nginx port..."
+        if sudo "$SCRIPT_DIR/update-nginx-proxy-port.sh"; then
+            echo "✅ System nginx proxy updated for current shared nginx port"
+        else
+            echo "❌ Failed to update system nginx proxy. Please run: sudo $SCRIPT_DIR/update-nginx-proxy-port.sh"
+        fi
+    else
+        echo "⚠️  update-nginx-proxy-port.sh not found, skipping proxy update"
+    fi
+    
     # Step 9: Setup Laravel application
     echo "🔧 Setting up Laravel application..."
     "$SCRIPT_DIR/setup-laravel.sh" "$PROJECT_NAME" "$PHP_CONTAINER" "$CONTAINER_MOUNT_DIR"
@@ -216,7 +242,14 @@ main() {
         echo "⚠️  Shared nginx container not found, skipping reload"
     fi
     
-    # Step 11: Display success message
+    # Step 11: Update nginx configuration to use port 80 (internal)
+    echo "🔄 Updating nginx configuration to use port 80 (internal)..."
+    if [ -f "$NGINX_CONFIG_DIR/${PROJECT_NAME}.conf" ]; then
+        sed -i "s/listen [0-9]*;/listen 80;/" "$NGINX_CONFIG_DIR/${PROJECT_NAME}.conf"
+        echo "✅ Updated nginx configuration to use port 80 (internal)"
+    fi
+    
+    # Step 12: Display success message
     display_success_message
 }
 
@@ -240,17 +273,8 @@ display_success_message() {
     echo "📝 Configuration: $NGINX_CONFIG_DIR/${PROJECT_NAME}.conf"
     echo ""
     echo "🔧 To access your application:"
-    echo "   1. Ensure DNS points $VIRTUAL_HOST to this server"
-    if [ -f /tmp/laravel_nginx_port ]; then
-        source /tmp/laravel_nginx_port
-        if [ "$NGINX_PORT" = "80" ]; then
-            echo "   2. Visit: http://$VIRTUAL_HOST"
-        else
-            echo "   2. Visit: http://$VIRTUAL_HOST:$NGINX_PORT"
-        fi
-    else
-        echo "   2. Visit: http://$VIRTUAL_HOST"
-    fi
+    echo "   1. Add to /etc/hosts: 127.0.0.1 $VIRTUAL_HOST"
+    echo "   2. Visit: http://$VIRTUAL_HOST (no port needed)"
     echo "   3. Configure SSL certificate for HTTPS if needed"
     echo ""
     echo "📊 High-Scale Deployment Benefits:"

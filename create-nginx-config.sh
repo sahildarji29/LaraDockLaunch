@@ -35,7 +35,15 @@ echo "🌐 Creating nginx configuration for $VIRTUAL_HOST..."
 # Create nginx configuration directory if it doesn't exist
 mkdir -p "$NGINX_CONFIG_DIR"
 
+# Get the current nginx port from the shared container for display purposes
+NGINX_PORT=80
+if [ -f /tmp/laravel_nginx_port ]; then
+    source /tmp/laravel_nginx_port
+fi
+
 # Create nginx configuration file
+# Note: Inside the container, nginx always listens on port 80
+# The external port mapping is handled by Docker
 tee "$NGINX_CONFIG_DIR/${PROJECT_NAME}.conf" > /dev/null << EOF
 server {
     listen 80;
@@ -143,4 +151,5 @@ server {
 }
 EOF
 
-echo "✅ Nginx configuration created: $NGINX_CONFIG_DIR/${PROJECT_NAME}.conf" 
+echo "✅ Nginx configuration created: $NGINX_CONFIG_DIR/${PROJECT_NAME}.conf"
+echo "🌐 Virtual host will be accessible on port ${NGINX_PORT} (external)" 

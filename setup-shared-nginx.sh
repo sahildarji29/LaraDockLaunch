@@ -138,4 +138,14 @@ docker run -d \
 echo "NGINX_PORT=$NGINX_PORT" > /tmp/laravel_nginx_port
 echo "✅ Shared nginx container created on port $NGINX_PORT"
 
+# Update existing nginx configurations to use port 80 (internal)
+echo "🔄 Updating existing nginx configurations to use port 80 (internal)..."
+for config_file in "$NGINX_CONFIG_DIR"/*.conf; do
+    if [ -f "$config_file" ]; then
+        # Update the listen directive to use port 80 (internal)
+        sed -i "s/listen [0-9]*;/listen 80;/" "$config_file"
+        echo "✅ Updated $(basename "$config_file")"
+    fi
+done
+
 echo "✅ Shared nginx container setup completed" 
