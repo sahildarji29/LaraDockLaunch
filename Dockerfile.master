@@ -50,18 +50,18 @@ RUN { \
     echo 'realpath_cache_ttl = 600'; \
     } > /usr/local/etc/php/conf.d/docker-php-optimizations.ini
 
-# Configure PHP-FPM for high-scale deployment
+# Configure PHP-FPM for high-scale deployment with dynamic user
 RUN { \
     echo '[global]'; \
     echo 'error_log = /dev/null'; \
     echo 'daemonize = no'; \
     echo ''; \
     echo '[www]'; \
-    echo 'user = laraveluser'; \
-    echo 'group = laraveluser'; \
+    echo 'user = www-data'; \
+    echo 'group = www-data'; \
     echo 'listen = 9000'; \
-    echo 'listen.owner = laraveluser'; \
-    echo 'listen.group = laraveluser'; \
+    echo 'listen.owner = www-data'; \
+    echo 'listen.group = www-data'; \
     echo 'listen.mode = 0660'; \
     echo 'pm = dynamic'; \
     echo 'pm.max_children = 10'; \

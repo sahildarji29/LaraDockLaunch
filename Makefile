@@ -1,4 +1,4 @@
-.PHONY: init help clean status clean-nginx hosts-help add-host remove-host list-hosts build-master clean-master
+.PHONY: init help clean status clean-nginx hosts-help add-host remove-host list-hosts build-master clean-master setup-production-proxy
 
 # Default values
 DEFAULT_PROJECT_NAME ?= laravel-app
@@ -34,6 +34,7 @@ help: ## Show this help message
 	@echo "  make build-master                  # Build master image"
 	@echo "  make clean-master                  # Remove master image"
 	@echo "  make clean-nginx                   # Remove shared nginx container"
+	@echo "  make setup-production-proxy        # Setup production proxy (one-time, requires sudo)"
 	@echo ""
 	@echo "High-Scale Features:"
 	@echo "  • 50% fewer containers (1 shared nginx vs per-project nginx)"
@@ -311,3 +312,49 @@ logs: ## Show logs for a project
 	fi; \
 	echo "📋 Logs for $(PROJECT_NAME):"; \
 	docker logs $(PROJECT_NAME)_php --tail 50
+
+fix-permissions: ## Fix file permissions for Ubuntu default user
+	@if [ -z "$(PROJECT_NAME)" ]; then \
+		echo "🔧 Fixing permissions for all projects..."; \
+		./fix-permissions.sh; \
+	else \
+		echo "🔧 Fixing permissions for $(PROJECT_NAME)..."; \
+		./fix-permissions.sh $(PROJECT_NAME); \
+	fi
+
+permissions-help: ## Show permission management information
+	@echo "🔧 File Permissions Management"
+	@echo "============================="
+	@echo ""
+	@echo "For Ubuntu default user (UID:1000, GID:1000):"
+	@echo ""
+	@echo "Commands:"
+	@echo "  make fix-permissions                    # Fix all projects"
+	@echo "  make fix-permissions PROJECT_NAME=<n>  # Fix specific project"
+	@echo ""
+	@echo "Manual file operations:"
+	@echo "  touch /var/www/copilot-infra/PROJECT/newfile.txt"
+	@echo "  nano /var/www/copilot-infra/PROJECT/routes/web.php"
+	@echo "  docker exec PROJECT_php php /var/www/artisan make:controller Test"
+	@echo ""
+	@echo "Verify permissions:"
+	@echo "  ls -la /var/www/copilot-infra/PROJECT/"
+	@echo "  docker exec PROJECT_php ls -la /var/www/"
+
+setup-production-proxy: ## Setup production nginx proxy for accessing all projects without port numbers (requires sudo)
+	@echo "🚀 Setting up Production Nginx Proxy"
+	@echo "===================================="
+	@echo ""
+	@echo "⚠️  This is a ONE-TIME setup for production servers"
+	@echo "After setup, ALL Laravel projects will be accessible without port numbers"
+	@echo ""
+	@echo "Requirements:"
+	@echo "• Must run with sudo"
+	@echo "• At least one Laravel project must be running"
+	@echo "• Will configure system nginx to proxy to container nginx"
+	@echo ""
+	@echo "Running: sudo ./setup-production-proxy.sh"
+	@echo ""
+	@sudo ./setup-production-proxy.sh
+
+

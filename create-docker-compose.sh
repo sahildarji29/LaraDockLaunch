@@ -60,8 +60,8 @@ services:
     environment:
       - PROJECT_NAME=$PROJECT_NAME
       - CONTAINER_MOUNT_DIR=/var/www
-      - HOST_UID=\${HOST_UID:-$(id -u)}
-      - HOST_GID=\${HOST_GID:-$(id -g)}
+      - HOST_UID=\${HOST_UID:-1000}
+      - HOST_GID=\${HOST_GID:-1000}
       - SKIP_NPM=true
       - PHP_MEMORY_LIMIT=256M
       - PHP_MAX_EXECUTION_TIME=300

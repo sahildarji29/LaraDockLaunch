@@ -3,7 +3,7 @@ PROJECT_NAME=${PROJECT_NAME:-laravel-app}
 CONTAINER_MOUNT_DIR=${CONTAINER_MOUNT_DIR:-/var/www}
 HOST_UID=${HOST_UID:-1000}
 HOST_GID=${HOST_GID:-1000}
-APP_USER=laraveluser
+APP_USER=www-data
 
 echo "🚀 Starting Laravel container: $PROJECT_NAME"
 echo "📁 Mount directory: $CONTAINER_MOUNT_DIR"
@@ -12,31 +12,40 @@ echo "👤 Host UID: $HOST_UID, Host GID: $HOST_GID"
 
 # Dynamic user setup - run as root initially
 if [ "$(id -u)" = "0" ]; then
-    echo "🔧 Setting up dynamic user permissions..."
+    echo "🔧 Setting up dynamic user permissions for Ubuntu default user..."
     
-    # Create group if it doesn't exist
-    if ! getent group $APP_USER >/dev/null 2>&1; then
-        echo "📦 Creating group $APP_USER with GID $HOST_GID"
-        addgroup -g $HOST_GID $APP_USER
-    fi
+    # Update www-data user and group to match host UID/GID
+    echo "🔄 Updating www-data to match Ubuntu user (UID:$HOST_UID, GID:$HOST_GID)"
     
-    # Create user if it doesn't exist
-    if ! id -u $APP_USER >/dev/null 2>&1; then
-        echo "👤 Creating user $APP_USER with UID $HOST_UID"
-        adduser -D -u $HOST_UID -G $APP_USER $APP_USER
-    fi
+    # Update group GID
+    groupmod -g $HOST_GID $APP_USER
     
-    # Fix volume permissions to match host user
-    echo "🔒 Fixing volume permissions..."
+    # Update user UID and ensure it's in the correct group
+    usermod -u $HOST_UID -g $APP_USER $APP_USER
+    
+    # Fix volume permissions to match host user - ensure all files are owned by host user
+    echo "🔒 Setting correct ownership for Ubuntu user (UID:$HOST_UID, GID:$HOST_GID)..."
     chown -R $HOST_UID:$HOST_GID "$CONTAINER_MOUNT_DIR"
     chmod -R 755 "$CONTAINER_MOUNT_DIR"
     
+    # Ensure storage and cache directories have proper permissions for Laravel
+    if [ -d "$CONTAINER_MOUNT_DIR/storage" ]; then
+        chmod -R 775 "$CONTAINER_MOUNT_DIR/storage"
+        chown -R $HOST_UID:$HOST_GID "$CONTAINER_MOUNT_DIR/storage"
+    fi
+    
+    if [ -d "$CONTAINER_MOUNT_DIR/bootstrap/cache" ]; then
+        chmod -R 775 "$CONTAINER_MOUNT_DIR/bootstrap/cache"
+        chown -R $HOST_UID:$HOST_GID "$CONTAINER_MOUNT_DIR/bootstrap/cache"
+    fi
+    
     # Create necessary directories with correct ownership
-    mkdir -p "$CONTAINER_MOUNT_DIR/html"
-    chown -R $HOST_UID:$HOST_GID "$CONTAINER_MOUNT_DIR/html"
+    mkdir -p "$CONTAINER_MOUNT_DIR/storage/logs" "$CONTAINER_MOUNT_DIR/storage/framework/cache" "$CONTAINER_MOUNT_DIR/storage/framework/sessions" "$CONTAINER_MOUNT_DIR/storage/framework/views"
+    chown -R $HOST_UID:$HOST_GID "$CONTAINER_MOUNT_DIR/storage"
+    chmod -R 775 "$CONTAINER_MOUNT_DIR/storage"
     
     # Switch to the dynamic user for the rest of the script
-    echo "🔄 Switching to user $APP_USER..."
+    echo "🔄 Switching to Ubuntu user $APP_USER (UID:$HOST_UID)..."
     exec su-exec $APP_USER "$0" "$@"
 fi
 
