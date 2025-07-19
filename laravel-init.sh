@@ -119,11 +119,29 @@ chown -R $HOST_UID:$HOST_GID "$CONTAINER_MOUNT_DIR"
 chmod -R 755 "$CONTAINER_MOUNT_DIR"
 chmod -R 775 "$CONTAINER_MOUNT_DIR/storage" "$CONTAINER_MOUNT_DIR/bootstrap/cache" 2>/dev/null || true
 
-# Optimize Laravel for production
-echo "⚡ Optimizing Laravel for high-scale deployment..."
-php artisan config:cache
-php artisan route:cache
-php artisan view:cache
+# Clear Laravel caches before optimization
+echo "🧹 Clearing Laravel caches..."
+php artisan config:clear
+php artisan route:clear
+php artisan cache:clear
+php artisan optimize:clear 2>/dev/null || true
+echo "✅ Laravel caches cleared"
+
+# Optimize Laravel for development (skip caching for real-time changes)
+echo "⚡ Optimizing Laravel for development with real-time changes..."
+if [ "${APP_ENV:-local}" = "production" ]; then
+    echo "🏭 Production mode: Caching enabled"
+    php artisan config:cache
+    php artisan route:cache
+    php artisan view:cache
+    php artisan optimize
+else
+    echo "🛠️  Development mode: Caching disabled for real-time changes"
+    php artisan config:clear
+    php artisan route:clear
+    php artisan view:clear
+    php artisan optimize:clear
+fi
 
 echo "✅ Laravel container $PROJECT_NAME is ready!"
 echo "📊 Memory usage: $(free -m | grep Mem | awk '{print $3}'MB)/$(free -m | grep Mem | awk '{print $2}'MB)"

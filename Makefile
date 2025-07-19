@@ -313,6 +313,8 @@ logs: ## Show logs for a project
 	echo "📋 Logs for $(PROJECT_NAME):"; \
 	docker logs $(PROJECT_NAME)_php --tail 50
 
+
+
 fix-permissions: ## Fix file permissions for Ubuntu default user
 	@if [ -z "$(PROJECT_NAME)" ]; then \
 		echo "🔧 Fixing permissions for all projects..."; \

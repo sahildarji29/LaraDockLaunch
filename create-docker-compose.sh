@@ -47,9 +47,9 @@ services:
       - /tmp:noexec,nosuid,size=100m
       - /var/tmp:noexec,nosuid,size=50m
     
-    # Volume mounts for data persistence - using bind mounts for local access
+    # Volume mounts for data persistence - using bind mounts for real-time local access
     volumes:
-      - ${PROJECT_PATH}:/var/www
+      - ${PROJECT_PATH}:/var/www:delegated
       - ${PROJECT_NAME}_logs:/var/log/php
     
     # Network configuration
@@ -67,9 +67,12 @@ services:
       - PHP_MAX_EXECUTION_TIME=300
       - FPM_MAX_CHILDREN=10
       - FPM_MAX_REQUESTS=500
-      - APP_ENV=production
-      - APP_DEBUG=false
-      - LOG_LEVEL=warning
+      - APP_ENV=local
+      - APP_DEBUG=true
+      - LOG_LEVEL=debug
+      - CACHE_DRIVER=file
+      - SESSION_DRIVER=file
+      - QUEUE_DRIVER=sync
     
     # Health check configuration
     healthcheck:
